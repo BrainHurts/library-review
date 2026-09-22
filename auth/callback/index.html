@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signing in…</title>
+  <link rel="stylesheet" href="../../css/app.css">
+</head>
+<body>
+  <main class="signin">
+    <div class="card signin-card" id="msg"><p>Signing you in…</p></div>
+  </main>
+  <script type="module">
+    import { handleCallback } from '../../js/auth.js';
+    import { APP_BASE } from '../../js/config.js';
+    handleCallback().catch((err) => {
+      const box = document.getElementById('msg');
+      box.innerHTML = '';
+      const h = document.createElement('h1'); h.textContent = 'Sign-in failed';
+      const p = document.createElement('p'); p.className = 'alert alert-error selectable'; p.textContent = err.message;
+      const a = document.createElement('a'); a.href = APP_BASE; a.className = 'btn btn-primary'; a.textContent = 'Try again';
+      box.append(h, p, a);
+    });
+  </script>
+</body>
+</html>
