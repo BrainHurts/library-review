@@ -5,7 +5,7 @@ export const APP_ID = '6ab2ddba6dd859465f1b298e';
 export const API_BASE = 'https://api.knack.com';
 
 // OAuth client registered for this site's URL (see README → "Changing the web address").
-export const CLIENT_ID = 'REPLACE_WITH_CLIENT_ID';
+export const CLIENT_ID = '6ab2e9e84ee62a5519479314';
 
 // Choices shown in the app. These MUST match the option lists on the Books table in the
 // Knack builder exactly (same spelling/case). To add a board meeting or campus: add the
