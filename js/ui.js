@@ -111,21 +111,46 @@ export function statusKey(status) {
   }[status] || 'neutral';
 }
 
-/**
- * Book cover from Open Library, falling back to a colored tile with the title's first letter.
- * Open Library rate-limits ISBN cover lookups, so use this only for short lists.
- */
+// Open Library rate-limits ISBN cover lookups (~100 per 5 min per network), so covers are
+// lazy-loaded (only rows on screen are fetched), known misses aren't re-requested, and a burst
+// of failures pauses cover requests for a while — books then show a lettered tile instead.
+const coverMisses = new Set();
+const coverErrors = [];
+const PAUSE_KEY = 'lbr.coversPausedUntil';
+function coversPaused() {
+  try { return Number(sessionStorage.getItem(PAUSE_KEY) || 0) > Date.now(); } catch { return false; }
+}
+function noteCoverError(isbn) {
+  coverMisses.add(isbn);
+  const now = Date.now();
+  coverErrors.push(now);
+  while (coverErrors.length && now - coverErrors[0] > 20_000) coverErrors.shift();
+  if (coverErrors.length >= 12) { // looks like throttling rather than genuinely missing covers
+    try { sessionStorage.setItem(PAUSE_KEY, String(now + 5 * 60_000)); } catch { /* storage blocked */ }
+    coverErrors.length = 0;
+  }
+}
+
+/** Book cover from Open Library, falling back to a colored tile with the title's first letter. */
 export function cover(isbn, title, size = 'S') {
   const letter = (String(title || '?').replace(/^(the|a|an)\s+/i, '').match(/[\p{L}\p{N}]/u) || ['?'])[0].toUpperCase();
   let hash = 0;
   for (const ch of String(title || '')) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
   const tile = h('div', { class: `cover cover-${size} cover-blank`, style: { '--hue': hash }, 'aria-hidden': 'true' }, letter);
-  if (!isbn) return tile;
-  const img = h('img', { class: `cover cover-${size}`, alt: '', loading: 'lazy', src: `https://covers.openlibrary.org/b/isbn/${isbn}-${size === 'L' ? 'M' : 'S'}.jpg?default=false` });
-  img.addEventListener('error', () => img.replaceWith(tile));
+  const id = String(isbn || '').replace(/[^0-9X]/gi, '');
+  if (!/^(\d{9}[\dX]|\d{13})$/i.test(id) || coverMisses.has(id) || coversPaused()) return tile;
+  const img = h('img', { class: `cover cover-${size}`, alt: '', loading: 'lazy', decoding: 'async', src: `https://covers.openlibrary.org/b/isbn/${id}-${size === 'L' ? 'M' : 'S'}.jpg?default=false` });
+  img.addEventListener('error', () => { noteCoverError(id); img.replaceWith(tile); });
   // Open Library sometimes returns a 1×1 placeholder instead of a 404.
-  img.addEventListener('load', () => { if (img.naturalWidth < 5) img.replaceWith(tile); });
+  img.addEventListener('load', () => { if (img.naturalWidth < 5) { coverMisses.add(id); img.replaceWith(tile); } });
   return img;
+}
+
+/** Cover + title/author block used in table title cells. */
+export function bookCell(isbn, title, authors, titleEl) {
+  return h('div', { class: 'title-wrap' }, cover(isbn, title),
+    h('div', null, titleEl || h('div', { class: 'book-title' }, title || h('em', { class: 'muted' }, 'no title')),
+      authors ? h('div', { class: 'muted small' }, authors) : null));
 }
 
 /** Placeholder rows shown while data loads. */

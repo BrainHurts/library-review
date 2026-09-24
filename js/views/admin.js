@@ -1,6 +1,6 @@
 // Admin screens: Review · Send to Luma · Import Luma results
 import { OBJ, F, IF, AGE_LEVELS, CAMPUSES, BOARD_MEETINGS, DEFAULT_BOARD_MEETING, STATUSES } from '../config.js';
-import { h, mount, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
+import { h, mount, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, bookCell, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
 import { list, listAll, update, create, remove, count, countBy, pool, today, text, arr } from '../api.js';
 import { extract, display } from '../isbn.js';
 import { findIsbnMatches, findSimilarTitles } from '../dupes.js';
@@ -148,7 +148,8 @@ function review(root, ctx) {
           const n = Number(text(b, F.isbnCount)) || 0;
           return h('tr', null,
             h('td', { class: 'cell-check' }, cb),
-            h('td', { class: 'title-cell' }, h('button', { class: 'link-btn book-title', onclick: () => editBook(b.id, reloadAll) }, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors))),
+            h('td', { class: 'title-cell' }, bookCell(text(b, F.isbn), text(b, F.title), text(b, F.authors),
+              h('button', { class: 'link-btn book-title', onclick: () => editBook(b.id, reloadAll) }, text(b, F.title)))),
             h('td', { class: 'mono' }, display(text(b, F.isbn)), n > 1 ? h('div', { class: 'muted small' }, `+${n - 1} alt`) : null),
             h('td', null, arr(b, F.age).join(', ')), h('td', null, arr(b, F.campus).join(', ')), h('td', null, text(b, F.meeting)),
             h('td', { class: 'small' }, text(b, F.submittedBy)),
@@ -290,7 +291,9 @@ function exportLuma(root, ctx) {
       h('div', { class: 'actions' }, dl, mark), prog,
       h('div', { class: 'table-wrap' }, responsive(h('table', { class: 'table' },
         h('thead', null, h('tr', null, LUMA_EXPORT_HEADER.map((c) => h('th', null, c)))),
-        h('tbody', null, rows.slice(0, 25).map((r) => h('tr', null, r.map((c, i) => h('td', { class: i === 0 ? 'mono' : '' }, c)))))))),
+        h('tbody', null, rows.slice(0, 25).map((r) => h('tr', null, r.map((c, i) => (i === 1
+          ? h('td', { class: 'title-cell' }, bookCell(r[0], c))
+          : h('td', { class: i === 0 ? 'mono' : '' }, c))))))))),
       books.length > 25 ? h('p', { class: 'muted small' }, `…and ${books.length - 25} more in the file.`) : null);
   }
 
@@ -379,7 +382,7 @@ function importLuma(root) {
           const ns = r.bookId ? resolveStatus(r, mapping, condChk.checked) : '';
           return h('tr', { class: !r.bookId ? 'row-bad' : r.result && r.result !== 'ok' ? 'row-bad' : r.result === 'ok' ? 'row-ok' : '' },
             h('td', null, r.n), h('td', { class: 'mono' }, r.isbn ? display(r.isbn) : r.isbnInput),
-            h('td', null, r.title), h('td', null, r.bookId ? [r.bookTitle, h('div', { class: 'muted small' }, `by ${r.how}`)] : h('span', { class: 'text-error' }, r.ambiguous ? `${r.ambiguous} books share this title` : 'No match')),
+            h('td', { class: 'title-cell' }, bookCell(r.isbn, r.title, r.author)), h('td', null, r.bookId ? [r.bookTitle, h('div', { class: 'muted small' }, `by ${r.how}`)] : h('span', { class: 'text-error' }, r.ambiguous ? `${r.ambiguous} books share this title` : 'No match')),
             h('td', null, r.status), h('td', null, ns && ns !== NO_CHANGE ? statusBadge(ns) : h('span', { class: 'muted small' }, ns ? 'unchanged' : '')),
             h('td', { class: 'small' }, r.conditions),
             h('td', { class: 'small' }, r.result === 'ok' ? '✓' : r.result ? h('span', { class: 'text-error' }, r.result) : ''));

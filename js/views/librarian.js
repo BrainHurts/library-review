@@ -1,6 +1,6 @@
 // Librarian screens: Add a book · Add many · My submissions · Search all books
 import { OBJ, F, AGE_LEVELS, CAMPUSES, BOARD_MEETINGS, DEFAULT_BOARD_MEETING, STATUSES, MAX_AUTO_ALTERNATES } from '../config.js';
-import { h, mount, append, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
+import { h, mount, append, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, bookCell, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
 import { list, update, pool, text, arr, countBy } from '../api.js';
 import { normalize, extract, display } from '../isbn.js';
 import { lookupIsbn } from '../lookup.js';
@@ -34,10 +34,8 @@ function bookLine(b, withCover = true) {
 }
 
 /** Title + author cell with a small cover. */
-function titleCell(b, withCover = true) {
-  return h('td', { class: 'title-cell' }, h('div', { class: 'title-wrap' },
-    withCover ? cover(text(b, F.isbn), text(b, F.title)) : null,
-    h('div', null, h('div', { class: 'book-title' }, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors)))));
+function titleCell(b) {
+  return h('td', { class: 'title-cell' }, bookCell(text(b, F.isbn), text(b, F.title), text(b, F.authors)));
 }
 
 // ─── Add a book ─────────────────────────────────────────────────────
@@ -352,7 +350,7 @@ function bulkAdd(root, ctx) {
         const cls = it.result === 'ok' ? 'row-ok' : it.problems.length ? 'row-bad' : it.warnings.length ? 'row-warn' : '';
         return h('tr', { class: cls },
           h('td', { class: 'cell-check' }, cb), h('td', null, it.n), h('td', { class: 'mono' }, it.isbn ? display(it.isbn) : it.isbnInput),
-          h('td', { class: 'title-cell' }, h('div', { class: 'book-title' }, it.title || h('em', { class: 'muted' }, 'no title')), h('div', { class: 'muted small' }, it.authors)),
+          h('td', { class: 'title-cell' }, bookCell(it.isbn, it.title, it.authors)),
           h('td', null, it.age.join(', ')), h('td', null, it.campus.join(', ')), h('td', null, (it.saveAlts || it.alternates).length || ''),
           h('td', { class: 'small' },
             it.result === 'ok' ? '✓ Submitted' : null,
