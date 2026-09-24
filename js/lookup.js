@@ -1,8 +1,8 @@
 // Online book lookup: Google Books (edition details) + Open Library (all ISBNs of the same work).
-// Both APIs are free and CORS-enabled (Google Books optionally takes a key; see config.js).
+// Both APIs are free and CORS-enabled. Google Books uses an API key when an admin is signed in
+// (loaded from Knack by main.js); otherwise it falls back to Google's shared keyless quota.
 // Failures are non-fatal — staff can type details.
 import { normalize } from './isbn.js';
-import { GOOGLE_BOOKS_API_KEY } from './config.js';
 
 const SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'phd', 'md']);
 
@@ -35,7 +35,14 @@ async function getJson(url, ms = 8000) {
   }
 }
 
-export const googleUrl = (isbn13) => `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1${GOOGLE_BOOKS_API_KEY ? `&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}` : ''}`;
+let googleKey = '';
+/** Set (or clear) the Google Books API key used for lookups. */
+export function setGoogleBooksKey(key) { googleKey = String(key || '').trim(); }
+export const hasGoogleBooksKey = () => !!googleKey;
+
+export const googleUrl = (isbn13) => `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1${googleKey ? `&key=${encodeURIComponent(googleKey)}` : ''}`;
+/** Same URL with the key hidden, for showing on screen. */
+export const googleUrlMasked = (isbn13) => googleUrl(isbn13).replace(/([?&]key=)[^&]+/, '$1•••');
 export const openLibraryUrl = (isbn13) => `https://openlibrary.org/search.json?isbn=${isbn13}&fields=key,title,subtitle,author_name,first_publish_year,isbn&limit=1`;
 
 /** Fetch a URL and report exactly what came back (for the raw-data view). Never throws. */
@@ -85,12 +92,14 @@ async function openLibrary(isbn13) {
 /** Plain-English reason a catalog lookup failed. */
 function explain(source, err) {
   if (err.status === 429) {
-    return source === 'Google Books' && !GOOGLE_BOOKS_API_KEY
-      ? 'Google Books: daily limit reached (HTTP 429). Keyless lookups share one quota with everyone who uses them; adding an API key in js/config.js fixes this.'
+    return source === 'Google Books' && !googleKey
+      ? 'Google Books: the free shared daily limit is used up (HTTP 429). It resets daily; admins’ lookups use the district’s own API key instead.'
       : `${source}: too many requests right now (HTTP 429). Try again later.`;
   }
   if (err.status === 0) return `${source}: ${err.message} (you may be offline, or a web filter may be blocking it).`;
-  if (err.status === 403 && source === 'Google Books' && GOOGLE_BOOKS_API_KEY) return 'Google Books: the API key was refused (HTTP 403). Check its restrictions in the Google Cloud console.';
+  if ((err.status === 400 || err.status === 403) && source === 'Google Books' && googleKey) {
+    return `Google Books: the API key was refused (HTTP ${err.status}). Check the key in Knack’s App Settings table and its restrictions in the Google Cloud console.`;
+  }
   return `${source}: ${err.message}`;
 }
 

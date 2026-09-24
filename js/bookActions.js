@@ -3,7 +3,7 @@ import { API_BASE, OBJ, F, IF, MAX_AUTO_ALTERNATES } from './config.js';
 import { h, mount, toast, errorBox, alertBox, modal, busy, cover, skeleton, rowMenu } from './ui.js';
 import { create, update, pool, text, raw } from './api.js';
 import { display } from './isbn.js';
-import { lookupIsbn, googleUrl, openLibraryUrl, fetchRaw } from './lookup.js';
+import { lookupIsbn, googleUrl, googleUrlMasked, hasGoogleBooksKey, openLibraryUrl, fetchRaw } from './lookup.js';
 import { findIsbnMatches } from './dupes.js';
 import { isbnRecordsFor } from './books.js';
 
@@ -235,7 +235,7 @@ export function openRawData(b) {
       { name: 'Knack · Books record', ok: true, status: 'loaded', request: `GET ${API_BASE}/v1/objects/${OBJ.books}/records/${b.id}`,
         note: 'The record exactly as the list on the previous page received it (no extra request).', body: b },
       { name: 'Knack · ISBNs linked to this book', request: `GET ${API_BASE}/v1/objects/${OBJ.isbns}/records?filters=[${IF.book} is ${b.id}]`, ...isbns },
-      { name: 'Google Books', request: `GET ${googleUrl(isbn)}`, link: googleUrl(isbn), ...fmt(g) },
+      { name: hasGoogleBooksKey() ? 'Google Books (district API key)' : 'Google Books (shared keyless quota)', request: `GET ${googleUrlMasked(isbn)}`, link: googleUrl(isbn), ...fmt(g) },
       { name: 'Open Library', request: `GET ${openLibraryUrl(isbn)}`, link: openLibraryUrl(isbn), ...fmt(o) },
     ]);
   });

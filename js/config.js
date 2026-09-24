@@ -16,18 +16,15 @@ export const CAMPUSES = ['CLE', 'CSE', 'KRE', 'LPE', 'MES', 'SE', 'VE', 'WSE', '
 export const AGE_LEVELS = ['Elementary', 'Middle School', 'High School'];
 export const STATUSES = ['Submitted', 'Sent to Luma', 'Approved', 'Approved with Conditions', 'Not Approved', 'Withdrawn'];
 
-// Optional Google Books API key. Without one, lookups share Google's keyless daily quota with
-// everyone on the internet, which often runs out (HTTP 429). A key is free from the Google Cloud
-// console: enable the "Books API", create an API key, and restrict it to this site's address
-// (HTTP referrers) and to the Books API. The key is visible in the page source, which is expected
-// for browser keys; the restrictions are what keep it from being misused.
-export const GOOGLE_BOOKS_API_KEY = '';
+// The Google Books API key is NOT kept here (this repo is public). It lives in the Knack
+// "App Settings" table, which only Admins can read; the app loads it when an admin signs in.
+export const GOOGLE_KEY_SETTING = 'Google Books API key'; // the Setting name to look for
 
 // Max alternate ISBNs auto-selected from an online lookup (classics can have hundreds).
 export const MAX_AUTO_ALTERNATES = 30;
 
 // ─── Knack schema keys (do not change unless the tables change) ─────
-export const OBJ = { books: 'object_3', librarians: 'object_4', admins: 'object_5', isbns: 'object_6' };
+export const OBJ = { books: 'object_3', librarians: 'object_4', admins: 'object_5', isbns: 'object_6', settings: 'object_7' };
 export const PROFILE = { librarian: 'profile_4', admin: 'profile_5' };
 
 export const F = {
@@ -40,6 +37,7 @@ export const F = {
 };
 export const IF = { isbn: 'field_72', type: 'field_73', book: 'field_80' };
 export const LF = { name: 'field_30', email: 'field_31', campus: 'field_41' };
+export const SF = { setting: 'field_82', value: 'field_83' }; // App Settings (Admins only)
 
 // Where the site lives (works at a domain root or a GitHub Pages sub-folder).
 export const APP_BASE = new URL('../', import.meta.url).href;

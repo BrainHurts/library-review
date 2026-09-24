@@ -58,6 +58,19 @@ A web app where library staff submit books for board review, backed by the Knack
 | Books | One row per requested title: status, board meeting, campus, age level, Luma results |
 | ISBNs | Every ISBN (primary and alternates) with a **unique** rule, linked to its book. This is what makes duplicate blocking reliable. |
 | Librarians / Admins | User roles. Librarians can read all books (for duplicate checks) but edit only their own. |
+| App Settings | Private settings, **readable by Admins only**. Holds the Google Books API key (Setting = `Google Books API key`). |
+
+## Google Books API key (admins)
+Without a key, Google Books lookups share one free daily quota with everyone on the internet, and it often runs out (HTTP 429). Admins' lookups use the district's own key instead. The key is kept in Knack, not in this public repo:
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project (or pick one), open **APIs & Services → Library**, and enable **Books API**.
+2. Go to **APIs & Services → Credentials → Create credentials → API key**.
+3. Edit the key:
+   - **Application restrictions:** *Websites*, and add `https://<username>.github.io/library-review/*`.
+   - **API restrictions:** *Restrict key* → **Books API** only.
+4. In the Knack builder, open the **App Settings** table and add a record: **Setting** = `Google Books API key` (exactly), **Value** = the key.
+5. Admins sign out and back in. **View raw data** on any book should then list "Google Books (district API key)" with HTTP 200.
+
+Librarians can't read App Settings, so their lookups still use the shared quota. The key is visible to admins in their browser, which is normal for browser keys; the website and API restrictions stop it being used anywhere else.
 
 ## Notes
 - The online lookups use Google Books and Open Library. If the district web filter blocks them, staff can still type the details; duplicate checks don't depend on them.

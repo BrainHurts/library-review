@@ -1,7 +1,8 @@
 // App shell: sign-in, role detection, hash routing.
-import { OBJ, LF, PROFILE, CLIENT_ID } from './config.js';
+import { OBJ, LF, SF, PROFILE, CLIENT_ID, GOOGLE_KEY_SETTING } from './config.js';
 import { getTokens, startLogin, fetchSession, logout, cacheSessionExtras } from './auth.js';
 import { list } from './api.js';
+import { setGoogleBooksKey } from './lookup.js';
 import { h, mount, errorBox, alertBox, themeToggle, applySavedTheme, logoMark } from './ui.js';
 import { renderLibrarian } from './views/librarian.js';
 import { renderAdmin } from './views/admin.js';
@@ -100,6 +101,19 @@ async function boot() {
       }
     } catch (err) {
       ctx.bootError = err;
+    }
+  }
+
+  // Admins only: load the district Google Books API key from Knack (one request, cached for the session).
+  if (ctx.isAdmin) {
+    if (session.googleKey) setGoogleBooksKey(session.googleKey);
+    else {
+      list(OBJ.settings, { filters: { match: 'and', rules: [{ field: SF.setting, operator: 'is', value: GOOGLE_KEY_SETTING }] }, rowsPerPage: 1 })
+        .then((r) => {
+          const key = r.records && r.records[0] && String(r.records[0][`${SF.value}_raw`] || '').trim();
+          if (key) { setGoogleBooksKey(key); cacheSessionExtras({ googleKey: key }); }
+        })
+        .catch((err) => console.warn('Could not load the Google Books API key from App Settings:', err.message));
     }
   }
 
