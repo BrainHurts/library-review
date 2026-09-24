@@ -2,12 +2,30 @@
 import { OBJ, LF, PROFILE, CLIENT_ID } from './config.js';
 import { getTokens, startLogin, fetchSession, logout, cacheSessionExtras } from './auth.js';
 import { list } from './api.js';
-import { h, mount, errorBox, alertBox, themeToggle, applySavedTheme } from './ui.js';
+import { h, mount, errorBox, alertBox, themeToggle, applySavedTheme, logoMark } from './ui.js';
 import { renderLibrarian } from './views/librarian.js';
 import { renderAdmin } from './views/admin.js';
 
 applySavedTheme();
 const root = document.getElementById('app');
+
+/** Bottom-right badge with the deployed commit, so you can confirm a new version is live. */
+async function showVersion() {
+  let v = null;
+  try { v = await import('./version.js'); } catch { /* local copy: only GitHub Pages turns version.js into real JS */ }
+  const sha = v && /^[0-9a-f]{7,40}$/i.test(v.COMMIT) ? v.COMMIT : '';
+  const built = v && !Number.isNaN(Date.parse(v.BUILT)) ? new Date(v.BUILT) : null;
+  const when = built ? built.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const label = sha ? `Version ${sha.slice(0, 7)}` : v ? 'Version unknown' : 'Local copy';
+  const title = sha
+    ? `Commit ${sha}${built ? `\nDeployed ${built.toLocaleString()}` : ''}\nClick to see this commit on GitHub.`
+    : v ? 'GitHub Pages didn’t report which commit it deployed.' : 'Running from a local copy, not GitHub Pages.';
+  const badge = sha && v.REPO
+    ? h('a', { class: 'version-badge', href: `https://github.com/${v.REPO}/commit/${sha}`, target: '_blank', rel: 'noopener', title }, label, when ? h('span', { class: 'vb-when' }, ` · ${when}`) : null)
+    : h('span', { class: 'version-badge', title }, label, when ? h('span', { class: 'vb-when' }, ` · ${when}`) : null);
+  document.body.append(badge);
+}
+showVersion();
 
 function signInPage(err) {
   const btn = h('button', { class: 'btn btn-primary btn-lg btn-block' }, 'Sign in');
@@ -18,7 +36,7 @@ function signInPage(err) {
     h('div', { class: 'signin-theme' }, themeToggle()),
     h('div', { class: 'signin-wrap' },
       h('section', { class: 'signin-hero' },
-        h('div', { class: 'logo', 'aria-hidden': 'true' }, '📚'),
+        logoMark('logo'),
         h('h1', null, 'Library Book Review'),
         h('p', { class: 'lede' }, 'Submit books for board review, catch duplicates before they happen, and track every title from request to approval.'),
         h('ol', { class: 'steps' },
@@ -41,7 +59,7 @@ function initials(name) {
 
 function header(session, roles, active) {
   return h('header', { class: 'topbar' },
-    h('a', { class: 'brand', href: '#/' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, '📚'), h('span', null, 'Library Book Review')),
+    h('a', { class: 'brand', href: '#/' }, logoMark(), h('span', null, 'Library Book Review')),
     roles.length > 1 ? h('nav', { class: 'role-switch', 'aria-label': 'Workspace' }, roles.map(([key, label]) =>
       h('a', { href: `#/${key}`, class: key === active ? 'active' : '', 'aria-current': key === active ? 'page' : null }, label))) : null,
     h('div', { class: 'user' },

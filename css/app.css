@@ -74,7 +74,8 @@ p { margin: .4em 0; }
 /* ─── Top bar ────────────────────────────────────────────────────── */
 .topbar { display: flex; align-items: center; gap: 1rem; padding: .6rem 1.25rem; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: center; gap: .55rem; font-weight: 700; font-size: 1.02rem; color: var(--text); text-decoration: none; }
-.brand-mark { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--primary-soft); font-size: 1.05rem; }
+.brand-mark { width: 32px; height: 32px; padding: 3px; border-radius: 8px; display: grid; place-items: center; background: var(--primary); color: var(--on-primary); flex: none; }
+.brand-mark .logo-band, .signin-hero .logo .logo-band { fill: var(--primary); }
 .role-switch { display: flex; gap: 2px; padding: 3px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 999px; }
 .role-switch a { padding: .3rem .85rem; border-radius: 999px; text-decoration: none; color: var(--muted); font-weight: 600; font-size: .9rem; }
 .role-switch a:hover { color: var(--text); }
@@ -343,19 +344,24 @@ input[type=checkbox] { accent-color: var(--primary); }
 @media (prefers-reduced-motion: reduce) { .modal, .modal-backdrop { animation: none; } }
 
 /* ─── Toasts ─────────────────────────────────────────────────────── */
-.toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: .5rem; z-index: 30; max-width: min(420px, calc(100vw - 2rem)); }
+.toasts { position: fixed; right: 1rem; bottom: 2.6rem; display: flex; flex-direction: column; gap: .5rem; z-index: 30; max-width: min(420px, calc(100vw - 2rem)); }
 .toast { padding: .75rem 1rem; border-radius: 10px; background: var(--text); color: var(--surface); box-shadow: var(--shadow-lg); font-weight: 500; animation: pop .2s ease-out; }
 .toast-success { background: var(--ok); color: #fff; }
 .toast-error { background: var(--err); color: #fff; }
 :root[data-theme="dark"] .toast-success, :root[data-theme="dark"] .toast-error { color: #0b1220; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast-success, :root:not([data-theme="light"]) .toast-error { color: #0b1220; } }
 
+/* ─── Version badge ─────────────────────────────────────────────── */
+.version-badge { position: fixed; right: .6rem; bottom: .5rem; z-index: 15; padding: .15rem .55rem; border-radius: 999px; font: 500 .72rem/1.5 var(--mono); color: var(--muted); background: var(--surface); border: 1px solid var(--border); text-decoration: none; box-shadow: var(--shadow); }
+a.version-badge:hover { color: var(--primary); border-color: var(--primary); }
+@media print { .version-badge { display: none; } }
+
 /* ─── Sign-in ────────────────────────────────────────────────────── */
 .signin { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;
   background: radial-gradient(1200px 600px at 10% -10%, var(--primary-soft), transparent 60%), radial-gradient(900px 500px at 110% 110%, var(--violet-bg), transparent 60%), var(--bg); }
 .signin-theme { position: absolute; top: 1rem; right: 1rem; }
 .signin-wrap { display: grid; grid-template-columns: 1.15fr 1fr; gap: 3rem; align-items: center; max-width: 980px; width: 100%; }
-.signin-hero .logo { font-size: 2.6rem; width: 64px; height: 64px; display: grid; place-items: center; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); margin-bottom: 1rem; }
+.signin-hero .logo { width: 64px; height: 64px; padding: 7px; display: grid; place-items: center; border-radius: 16px; background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow); margin-bottom: 1rem; }
 .signin-hero h1 { font-size: 2.3rem; margin-bottom: .5rem; }
 .lede { font-size: 1.1rem; color: var(--muted); max-width: 44ch; }
 .steps { list-style: none; padding: 0; margin: 1.5rem 0 0; display: flex; flex-direction: column; gap: .9rem; }
@@ -397,6 +403,7 @@ input[type=checkbox] { accent-color: var(--primary); }
   .progress { flex-wrap: wrap; }
   .progress-label { min-width: 0; }
   .toasts { left: 1rem; right: 1rem; max-width: none; }
+  .vb-when { display: none; }
 
   /* Tables become stacked cards */
   .table-wrap:has(.table-stack) { border: 0; overflow: visible; }

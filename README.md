@@ -42,6 +42,8 @@ A web app where library staff submit books for board review, backed by the Knack
 
 **Changing the web address:** Knack only sends people back after sign-in to addresses registered in advance. Register the new address with `/auth/callback/` on the end (e.g. `https://<username>.github.io/library-review/auth/callback/`), then put the client ID into `CLIENT_ID` in `js/config.js`.
 
+**Checking which version is live:** the bottom-right corner of every page shows `Version <commit>` and when it was deployed. It comes from `js/version.js`, which GitHub Pages fills in on every deploy, so there's nothing to update by hand. Match it against the commit in GitHub Desktop or on github.com (click the badge to open that commit). Right after a push it can take a minute or two for Pages to deploy, and GitHub Pages lets browsers keep files for up to 10 minutes; a hard refresh (Cmd+Shift+R / Ctrl+F5) loads the newest version straight away. A copy opened locally shows "Local copy".
+
 ## Day-to-day admin (in the Knack builder)
 - **Approve librarians**: new librarians choose *Sign up* on the sign-in page. Approve them in **Roles → Librarians** by setting User Status to *active*, and set their **Campus** so the submit form defaults to it.
 - **Create admins**: add a record under **Roles → Admins**. Self sign-up is off for admins.

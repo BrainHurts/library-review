@@ -159,6 +159,20 @@ export function skeleton(rows = 5) {
     Array.from({ length: rows }, () => h('div', { class: 'sk-row' }, h('div', { class: 'sk sk-cover' }), h('div', { class: 'sk-lines' }, h('div', { class: 'sk sk-line' }), h('div', { class: 'sk sk-line sk-short' })))));
 }
 
+/** App mark: three book spines on a shelf, the last one leaning. Drawn in currentColor. */
+const LOGO_SVG = `<svg viewBox="0 0 32 32" width="100%" height="100%" fill="currentColor" role="img" aria-hidden="true">
+  <rect x="5" y="8" width="5" height="17" rx="1"/>
+  <rect x="11.5" y="5" width="5.5" height="20" rx="1"/>
+  <rect x="19" y="9" width="5" height="16" rx="1" transform="rotate(14 19 25)"/>
+  <rect x="3" y="25.5" width="26" height="2" rx="1"/>
+  <g class="logo-band"><rect x="5" y="11" width="5" height="1.2"/><rect x="5" y="21" width="5" height="1.2"/>
+  <rect x="11.5" y="8" width="5.5" height="1.2"/><rect x="11.5" y="21" width="5.5" height="1.2"/></g>
+</svg>`;
+
+export function logoMark(cls = 'brand-mark') {
+  return h('span', { class: cls, 'aria-hidden': 'true', html: LOGO_SVG });
+}
+
 export function emptyState(icon, title, message, action) {
   return h('div', { class: 'empty' }, h('div', { class: 'empty-icon', 'aria-hidden': 'true' }, icon), h('h3', null, title), message ? h('p', { class: 'muted' }, message) : null, action || null);
 }
