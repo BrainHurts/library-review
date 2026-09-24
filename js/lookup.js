@@ -1,6 +1,8 @@
 // Online book lookup: Google Books (edition details) + Open Library (all ISBNs of the same work).
-// Both APIs are free, keyless and CORS-enabled. Failures are non-fatal — staff can type details.
+// Both APIs are free and CORS-enabled (Google Books optionally takes a key; see config.js).
+// Failures are non-fatal — staff can type details.
 import { normalize } from './isbn.js';
+import { GOOGLE_BOOKS_API_KEY } from './config.js';
 
 const SUFFIXES = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'phd', 'md']);
 
@@ -21,14 +23,19 @@ async function getJson(url, ms = 8000) {
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     return await res.json();
+  } catch (err) {
+    if (err.name === 'AbortError') throw Object.assign(new Error('timed out'), { status: 0 });
+    if (err instanceof SyntaxError) throw Object.assign(new Error('sent back an unreadable response'), { status: -1 });
+    if (err.status === undefined) throw Object.assign(new Error('could not connect'), { status: 0 }); // offline or blocked by a filter
+    throw err;
   } finally {
     clearTimeout(t);
   }
 }
 
-export const googleUrl = (isbn13) => `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1`;
+export const googleUrl = (isbn13) => `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1${GOOGLE_BOOKS_API_KEY ? `&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}` : ''}`;
 export const openLibraryUrl = (isbn13) => `https://openlibrary.org/search.json?isbn=${isbn13}&fields=key,title,subtitle,author_name,first_publish_year,isbn&limit=1`;
 
 /** Fetch a URL and report exactly what came back (for the raw-data view). Never throws. */
@@ -75,16 +82,30 @@ async function openLibrary(isbn13) {
   };
 }
 
+/** Plain-English reason a catalog lookup failed. */
+function explain(source, err) {
+  if (err.status === 429) {
+    return source === 'Google Books' && !GOOGLE_BOOKS_API_KEY
+      ? 'Google Books: daily limit reached (HTTP 429). Keyless lookups share one quota with everyone who uses them; adding an API key in js/config.js fixes this.'
+      : `${source}: too many requests right now (HTTP 429). Try again later.`;
+  }
+  if (err.status === 0) return `${source}: ${err.message} (you may be offline, or a web filter may be blocking it).`;
+  if (err.status === 403 && source === 'Google Books' && GOOGLE_BOOKS_API_KEY) return 'Google Books: the API key was refused (HTTP 403). Check its restrictions in the Google Cloud console.';
+  return `${source}: ${err.message}`;
+}
+
 /**
- * @returns {Promise<{found:boolean, title?:string, authors?:string, published?:string, workIsbns:string[], sources:string[], errors:string[]}>}
+ * @returns {Promise<{found:boolean, title?:string, authors?:string, published?:string, workIsbns:string[], sources:string[],
+ *   notFound:string[], errors:string[]}>}  notFound = catalogs that answered but have no record of this ISBN
  */
 export async function lookupIsbn(isbn13) {
   const [g, o] = await Promise.allSettled([google(isbn13), openLibrary(isbn13)]);
   const gv = g.status === 'fulfilled' ? g.value : null;
   const ov = o.status === 'fulfilled' ? o.value : null;
   const errors = [];
-  if (g.status === 'rejected') errors.push(`Google Books: ${g.reason.message}`);
-  if (o.status === 'rejected') errors.push(`Open Library: ${o.reason.message}`);
+  if (g.status === 'rejected') errors.push(explain('Google Books', g.reason));
+  if (o.status === 'rejected') errors.push(explain('Open Library', o.reason));
+  const notFound = [g.status === 'fulfilled' && !gv && 'Google Books', o.status === 'fulfilled' && !ov && 'Open Library'].filter(Boolean);
   const src = gv || ov;
   const workIsbns = [...new Set([...(ov ? ov.isbns : []), ...(gv ? gv.isbns : [])])].filter((i) => i !== isbn13);
   return {
@@ -94,6 +115,7 @@ export async function lookupIsbn(isbn13) {
     published: (gv && gv.published) || (ov && ov.published) || '',
     workIsbns,
     sources: [gv && 'Google Books', ov && 'Open Library'].filter(Boolean),
+    notFound,
     errors,
   };
 }

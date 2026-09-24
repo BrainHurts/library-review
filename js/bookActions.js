@@ -50,9 +50,10 @@ export function refreshBook(ctx, b, onSaved) {
         h('span', { class: 'muted small' }, info.found ? `Found in ${info.sources.join(' & ')}` : 'Not found online')));
 
     if (!info.found) {
-      mount(body, head, info.errors.length
-        ? alertBox('error', h('strong', null, 'The online lookup failed. '), info.errors.join(' · '), h('div', { class: 'small' }, 'The district web filter may be blocking these sites.'))
-        : alertBox('warn', `Neither Google Books nor Open Library has a record for ISBN ${display(isbn)}.`));
+      mount(body, head,
+        info.notFound.length ? alertBox('warn', `${info.notFound.join(' and ')} ${info.notFound.length > 1 ? 'have' : 'has'} no record of ISBN ${display(isbn)}. The ISBN itself is valid; this edition just isn’t listed there.`) : null,
+        info.errors.length ? alertBox('error', h('strong', null, info.notFound.length ? 'Couldn’t check: ' : 'The online lookup failed. '), info.errors.map((e) => h('div', null, e))) : null,
+        h('p', { class: 'hint' }, 'Use “View raw data” in the row menu to see exactly what each service returned.'));
       return;
     }
 
@@ -91,6 +92,7 @@ export function refreshBook(ctx, b, onSaved) {
       altList ? [h('h3', null, `Other editions found online (${alts.length})`),
         h('p', { class: 'hint' }, 'Checked ISBNs are added to this book so nobody can submit another edition. Crossed-out ones are already on a different book.'), altList] : null,
       h('p', { class: 'hint' }, `${known.size} ISBN(s) already saved for this book.`),
+      info.errors.length ? alertBox('warn', h('strong', null, 'Only partly checked. '), info.errors.map((e) => h('div', null, e))) : null,
       editable ? null : alertBox('warn', 'You can only apply changes to your own books while they are still “Submitted”. Ask an admin to update this one.'));
     refreshSave();
 

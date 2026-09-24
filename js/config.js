@@ -16,6 +16,13 @@ export const CAMPUSES = ['CLE', 'CSE', 'KRE', 'LPE', 'MES', 'SE', 'VE', 'WSE', '
 export const AGE_LEVELS = ['Elementary', 'Middle School', 'High School'];
 export const STATUSES = ['Submitted', 'Sent to Luma', 'Approved', 'Approved with Conditions', 'Not Approved', 'Withdrawn'];
 
+// Optional Google Books API key. Without one, lookups share Google's keyless daily quota with
+// everyone on the internet, which often runs out (HTTP 429). A key is free from the Google Cloud
+// console: enable the "Books API", create an API key, and restrict it to this site's address
+// (HTTP referrers) and to the Books API. The key is visible in the page source, which is expected
+// for browser keys; the restrictions are what keep it from being misused.
+export const GOOGLE_BOOKS_API_KEY = '';
+
 // Max alternate ISBNs auto-selected from an online lookup (classics can have hundreds).
 export const MAX_AUTO_ALTERNATES = 30;
 

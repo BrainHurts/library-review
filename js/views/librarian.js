@@ -154,7 +154,8 @@ function addBook(root, ctx) {
         fill(titleIn, info.title); fill(authorsIn, info.authors); fill(pubIn, info.published);
         isbnMsg.textContent += ` · Found in ${info.sources.join(' & ')}${info.workIsbns.length ? ` · ${info.workIsbns.length} other edition ISBN(s)` : ''}`;
       } else {
-        isbnMsg.textContent += info.errors.length ? ' · Online lookup unavailable — please type the details.' : ' · Not found online — please type the details.';
+        isbnMsg.textContent += info.errors.length ? ' · Not found online — please type the details.' : ' · Not in Google Books or Open Library — please type the details.';
+        if (info.errors.length) isbnMsg.title = info.errors.join('\n');
       }
       state.workIsbns = info.workIsbns;
       let auto = 0;
