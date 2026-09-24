@@ -6,10 +6,15 @@
   <title>Library Book Review</title>
   <meta name="description" content="Submit library books for board review and track approval status.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <meta name="theme-color" content="#1f5fae">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <script>try{var t=localStorage.getItem('lbr.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div id="app"><p class="loading">Loading…</p></div>
+  <div id="app"><div class="boot"><div class="spinner" aria-hidden="true"></div><p class="muted">Loading…</p></div></div>
   <noscript>This app needs JavaScript turned on.</noscript>
   <script type="module" src="js/main.js"></script>
 </body>

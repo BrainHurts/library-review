@@ -1,20 +1,25 @@
 // Admin screens: Review · Send to Luma · Import Luma results
 import { OBJ, F, IF, AGE_LEVELS, CAMPUSES, BOARD_MEETINGS, DEFAULT_BOARD_MEETING, STATUSES } from '../config.js';
-import { h, mount, clear, toast, errorBox, alertBox, modal, statusBadge, busy, download, readTable, field, select, checkGroup, progress, tabs } from '../ui.js';
-import { list, listAll, update, create, remove, count, pool, today, text, arr } from '../api.js';
+import { h, mount, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
+import { list, listAll, update, create, remove, count, countBy, pool, today, text, arr } from '../api.js';
 import { extract, display } from '../isbn.js';
 import { findIsbnMatches, findSimilarTitles } from '../dupes.js';
 import { isbnRecordsFor, deleteBook } from '../books.js';
 import { stringify, parse } from '../csv.js';
 import { LUMA_EXPORT_HEADER, lumaExportRows, parseLumaResults, guessStatus, resolveStatus, NO_CHANGE } from '../luma.js';
-import { pager } from './librarian.js';
+import { pager, dropZone } from './librarian.js';
 
 const TABS = [['review', 'Review books'], ['export', 'Send to Luma'], ['import', 'Import Luma results']];
+const HEADS = {
+  review: ['Review books', 'Filter by meeting, status or campus. Change a status inline, or select several books to update them together.'],
+  export: ['Send to Luma', 'Build the upload file for Luma, then mark those books as sent so they aren’t sent twice.'],
+  import: ['Import Luma results', 'Upload Luma’s export. Rows are matched to books by any known ISBN, falling back to title. Nothing changes until you click Update.'],
+};
 
 export function renderAdmin(root, ctx, sub = 'review') {
   if (!TABS.some(([k]) => k === sub)) sub = 'review';
   const body = h('div', { class: 'tab-body' });
-  mount(root, tabs(TABS, sub, (k) => { location.hash = `#/admin/${k}`; }), body);
+  mount(root, tabs(TABS, sub, (k) => { location.hash = `#/admin/${k}`; }), pageHead(...HEADS[sub]), body);
   ({ review, export: exportLuma, import: importLuma })[sub](body, ctx);
 }
 
@@ -41,23 +46,46 @@ function review(root, ctx) {
   const bulkSel = select([['', 'Set status for selected…'], ...STATUSES], '');
   const bulkBar = h('div', { class: 'bulk-bar', hidden: true }, h('span', { class: 'bulk-count' }), bulkSel);
 
+  let counts = null;
+
+  // One aggregate call (fallback: one count per status). Only refetched when the meeting changes or after bulk writes.
   async function loadCounts() {
-    clear(cards);
+    mount(cards, [0, 1, 2, 3, 4, 5, 6].map(() => h('div', { class: 'stat stat-loading' }, h('span', { class: 'sk sk-line' }))));
     const base = st.meeting ? [{ field: F.meeting, operator: 'is', value: st.meeting }] : [];
     try {
-      const counts = await Promise.all(STATUSES.map((s) => count(OBJ.books, { match: 'and', rules: [...base, { field: F.status, operator: 'is', value: s }] })));
-      const total = counts.reduce((a, b) => a + b, 0);
-      mount(cards,
-        h('button', { class: `stat${!st.status ? ' active' : ''}`, onclick: () => { statusSel.value = ''; st.status = ''; st.page = 1; load(); } }, h('span', { class: 'stat-n' }, total), h('span', { class: 'stat-l' }, 'All')),
-        STATUSES.map((s, i) => h('button', { class: `stat${st.status === s ? ' active' : ''}`, onclick: () => { statusSel.value = s; st.status = s; st.page = 1; load(); } }, h('span', { class: 'stat-n' }, counts[i]), h('span', { class: 'stat-l' }, s))));
+      try {
+        counts = await countBy(OBJ.books, F.status, base.length ? { match: 'and', rules: base } : undefined);
+      } catch {
+        const n = await Promise.all(STATUSES.map((s) => count(OBJ.books, { match: 'and', rules: [...base, { field: F.status, operator: 'is', value: s }] })));
+        counts = new Map(STATUSES.map((s, i) => [s, n[i]]));
+      }
+      renderCards();
     } catch (err) { mount(cards, errorBox(err, 'Could not load counts')); }
+  }
+
+  function renderCards() {
+    if (!counts) return;
+    const total = STATUSES.reduce((a, s) => a + (counts.get(s) || 0), 0);
+    const pick = (s) => { statusSel.value = s; st.status = s; st.page = 1; renderCards(); load(); };
+    mount(cards,
+      h('button', { class: `stat${!st.status ? ' active' : ''}`, onclick: () => pick('') }, h('span', { class: 'stat-n' }, total), h('span', { class: 'stat-l' }, st.meeting ? `All · ${st.meeting}` : 'All books')),
+      STATUSES.map((s) => h('button', { class: `stat s-${statusKey(s)}${st.status === s ? ' active' : ''}`, onclick: () => pick(s) },
+        h('span', { class: 'stat-n' }, counts.get(s) || 0), h('span', { class: 'stat-l' }, s))),
+      h('div', { class: 'stat-bar-wrap' }, statusBar(STATUSES, counts)));
+  }
+
+  /** Keep the counts in step with an inline status change without another API call. */
+  function bump(from, to) {
+    if (!counts || from === to) return;
+    counts.set(from, Math.max(0, (counts.get(from) || 0) - 1));
+    counts.set(to, (counts.get(to) || 0) + 1);
+    renderCards();
   }
 
   async function load() {
     st.selected.clear();
     updateBulk();
-    mount(out, h('div', { class: 'muted' }, 'Loading…'));
-    loadCounts();
+    mount(out, skeleton(6));
     const rules = [];
     if (st.meeting) rules.push({ field: F.meeting, operator: 'is', value: st.meeting });
     if (st.status) rules.push({ field: F.status, operator: 'is', value: st.status });
@@ -66,8 +94,10 @@ function review(root, ctx) {
     try {
       if (st.q) {
         // Title OR author, combined with the other filters (AND) — do two queries and merge.
-        const a = await list(OBJ.books, { filters: { match: 'and', rules: [...rules, { field: F.title, operator: 'contains', value: st.q }] }, rowsPerPage: 200, sortField: F.title });
-        const b = await list(OBJ.books, { filters: { match: 'and', rules: [...rules, { field: F.authors, operator: 'contains', value: st.q }] }, rowsPerPage: 200, sortField: F.title });
+        const [a, b] = await Promise.all([
+          list(OBJ.books, { filters: { match: 'and', rules: [...rules, { field: F.title, operator: 'contains', value: st.q }] }, rowsPerPage: 200, sortField: F.title }),
+          list(OBJ.books, { filters: { match: 'and', rules: [...rules, { field: F.authors, operator: 'contains', value: st.q }] }, rowsPerPage: 200, sortField: F.title }),
+        ]);
         const seen = new Set();
         records = [...a.records, ...b.records].filter((r) => !seen.has(r.id) && seen.add(r.id));
         renderTable({ records, total_records: records.length, total_pages: 1, current_page: 1 });
@@ -90,49 +120,56 @@ function review(root, ctx) {
     const bad = res.filter((r) => !r.ok);
     toast(bad.length ? `${ids.length - bad.length} updated; ${bad.length} failed: ${bad[0].error.message}` : `${ids.length} book(s) set to “${s}”.`, bad.length ? 'error' : 'success', 8000);
     bulkSel.value = '';
+    loadCounts();
     load();
   });
 
   function renderTable(r) {
-    if (!r.records.length) { mount(out, h('p', { class: 'muted' }, 'No books match these filters.')); return; }
+    if (!r.records.length) { mount(out, emptyState('📭', 'No books match these filters', 'Try another board meeting, status or campus.')); return; }
     const all = h('input', { type: 'checkbox', 'aria-label': 'Select all on this page', onchange: () => {
       out.querySelectorAll('tbody input[type=checkbox]').forEach((cb) => { cb.checked = all.checked; cb.dispatchEvent(new Event('change')); });
     } });
     mount(out,
       h('div', { class: 'muted small' }, `${r.total_records} book(s)`),
-      h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('div', { class: 'table-wrap' }, responsive(h('table', { class: 'table' },
         h('thead', null, h('tr', null, h('th', null, all), ['Title / Author', 'ISBN', 'Age', 'Campus', 'Meeting', 'Submitted by', 'Status', 'Luma', ''].map((t) => h('th', null, t)))),
         h('tbody', null, r.records.map((b) => {
           const cb = h('input', { type: 'checkbox', onchange: () => { if (cb.checked) st.selected.add(b.id); else st.selected.delete(b.id); updateBulk(); } });
           const sSel = select(STATUSES, text(b, F.status), { class: 'status-select', 'aria-label': 'Status' });
           sSel.addEventListener('change', async () => {
-            try { await update(OBJ.books, b.id, { [F.status]: sSel.value }); toast(`“${text(b, F.title)}” → ${sSel.value}`, 'success'); loadCounts(); }
-            catch (err) { toast(err.message, 'error', 10000); sSel.value = text(b, F.status); }
+            const was = text(b, F.status);
+            try {
+              const saved = await update(OBJ.books, b.id, { [F.status]: sSel.value });
+              Object.assign(b, saved);
+              bump(was, sSel.value);
+              toast(`“${text(b, F.title)}” → ${sSel.value}`, 'success');
+            } catch (err) { toast(err.message, 'error', 10000); sSel.value = was; }
           });
           const n = Number(text(b, F.isbnCount)) || 0;
           return h('tr', null,
-            h('td', null, cb),
-            h('td', null, h('div', null, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors))),
+            h('td', { class: 'cell-check' }, cb),
+            h('td', { class: 'title-cell' }, h('button', { class: 'link-btn book-title', onclick: () => editBook(b.id, reloadAll) }, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors))),
             h('td', { class: 'mono' }, display(text(b, F.isbn)), n > 1 ? h('div', { class: 'muted small' }, `+${n - 1} alt`) : null),
             h('td', null, arr(b, F.age).join(', ')), h('td', null, arr(b, F.campus).join(', ')), h('td', null, text(b, F.meeting)),
             h('td', { class: 'small' }, text(b, F.submittedBy)),
             h('td', null, sSel),
             h('td', { class: 'small' }, text(b, F.lumaStatus), text(b, F.lumaConditions) ? h('div', { class: 'muted' }, text(b, F.lumaConditions)) : null),
-            h('td', null, h('button', { class: 'btn btn-small btn-ghost', onclick: () => editBook(b.id, load) }, 'Open')));
-        })))),
+            h('td', { class: 'row-actions' }, h('button', { class: 'btn btn-small btn-ghost', onclick: () => editBook(b.id, reloadAll) }, 'Open')));
+        }))))),
       pager(r, (p) => { st.page = p; load(); }));
   }
 
-  meetingSel.addEventListener('change', () => { st.meeting = meetingSel.value; ctx.adminMeeting = st.meeting; st.page = 1; load(); });
-  statusSel.addEventListener('change', () => { st.status = statusSel.value; st.page = 1; load(); });
+  const reloadAll = () => { loadCounts(); load(); };
+  meetingSel.addEventListener('change', () => { st.meeting = meetingSel.value; ctx.adminMeeting = st.meeting; st.page = 1; reloadAll(); });
+  statusSel.addEventListener('change', () => { st.status = statusSel.value; st.page = 1; renderCards(); load(); });
   campusSel.addEventListener('change', () => { st.campus = campusSel.value; st.page = 1; load(); });
   let t;
   qIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { st.q = qIn.value.trim(); st.page = 1; load(); }, 400); });
 
-  mount(root, h('div', { class: 'card' },
+  mount(root, cards, h('div', { class: 'card' },
     h('div', { class: 'filters' }, field('Board meeting', meetingSel), field('Status', statusSel), field('Campus', campusSel), field('Search', qIn)),
-    cards, bulkBar, out));
-  load();
+    bulkBar, out));
+  reloadAll();
 }
 
 async function editBook(id, onDone) {
@@ -185,6 +222,10 @@ async function editBook(id, onDone) {
   const save = h('button', { class: 'btn btn-primary' }, 'Save');
   const del = h('button', { class: 'btn btn-danger-ghost' }, 'Delete book');
   const m = modal(text(b, F.title) || 'Book', h('div', { class: 'form' },
+    h('div', { class: 'modal-book' }, cover(text(b, F.isbn), text(b, F.title), 'L'),
+      h('div', null, statusBadge(text(b, F.status)),
+        h('div', { class: 'muted small' }, `Submitted by ${text(b, F.submittedBy) || 'unknown'} on ${text(b, F.createdOn)}`),
+        h('div', { class: 'mono small' }, `ISBN ${display(text(b, F.isbn))}`))),
     h('div', { class: 'grid-2' }, field('Title', titleIn), field('Author(s)', authorsIn)),
     h('div', { class: 'grid-3' }, field('Date published', pubIn), field('Board meeting', meetingSel), field('Status', statusSel)),
     h('fieldset', null, h('legend', null, 'Age level'), ageGrp),
@@ -193,7 +234,6 @@ async function editBook(id, onDone) {
     text(b, F.libNotes) ? h('div', { class: 'note' }, h('strong', null, 'Librarian notes: '), text(b, F.libNotes)) : null,
     field('Admin notes (visible to the librarian)', adminNotes),
     luma.length ? h('fieldset', null, h('legend', null, 'Luma'), h('dl', { class: 'dl' }, luma.flatMap(([l, k]) => [h('dt', null, l), h('dd', null, text(b, k))]))) : null,
-    h('div', { class: 'muted small' }, `Submitted by ${text(b, F.submittedBy) || 'unknown'} on ${text(b, F.createdOn)}`),
     err), [del, save]);
 
   save.addEventListener('click', () => busy(save, 'Saving…', async () => {
@@ -248,14 +288,13 @@ function exportLuma(root, ctx) {
     mount(out,
       h('p', null, `${books.length} book(s). Columns match Luma’s template: ISBN | Title | Authors | Date Published.`),
       h('div', { class: 'actions' }, dl, mark), prog,
-      h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('div', { class: 'table-wrap' }, responsive(h('table', { class: 'table' },
         h('thead', null, h('tr', null, LUMA_EXPORT_HEADER.map((c) => h('th', null, c)))),
-        h('tbody', null, rows.slice(0, 25).map((r) => h('tr', null, r.map((c, i) => h('td', { class: i === 0 ? 'mono' : '' }, c))))))),
+        h('tbody', null, rows.slice(0, 25).map((r) => h('tr', null, r.map((c, i) => h('td', { class: i === 0 ? 'mono' : '' }, c)))))))),
       books.length > 25 ? h('p', { class: 'muted small' }, `…and ${books.length - 25} more in the file.`) : null);
   }
 
   mount(root, h('div', { class: 'card' },
-    h('p', null, 'Builds the upload file for Luma. After uploading it to Luma, mark the books as “Sent to Luma” so they aren’t sent twice.'),
     h('div', { class: 'filters' }, field('Board meeting', meetingSel)),
     h('fieldset', null, h('legend', null, 'Include books with status'), statusGrp),
     h('label', { class: 'chk' }, headerChk, ' Include a header row (Luma ignores it)'),
@@ -264,7 +303,7 @@ function exportLuma(root, ctx) {
 
 // ─── Import Luma results ───────────────────────────────────────────
 function importLuma(root) {
-  const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.xlsx' });
+  const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.xlsx', class: 'file-input' });
   const pasteIn = h('textarea', { rows: 4, placeholder: 'Or paste the Luma results (including the header row)' });
   const readBtn = h('button', { class: 'btn btn-primary' }, 'Read results');
   const condChk = h('input', { type: 'checkbox', checked: true });
@@ -334,7 +373,7 @@ function importLuma(root) {
       h('h3', null, 'Status mapping'), mapTable,
       h('label', { class: 'chk' }, condChk, ' Use “Approved with Conditions” when an approved row has text in Conditions'),
       h('div', { class: 'actions' }, apply, dlUnmatched), prog,
-      h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('div', { class: 'table-wrap' }, responsive(h('table', { class: 'table' },
         h('thead', null, h('tr', null, ['Row', 'ISBN', 'Luma title', 'Matched book', 'Luma status', 'New status', 'Conditions', 'Result'].map((t) => h('th', null, t)))),
         h('tbody', null, rows.map((r) => {
           const ns = r.bookId ? resolveStatus(r, mapping, condChk.checked) : '';
@@ -344,11 +383,10 @@ function importLuma(root) {
             h('td', null, r.status), h('td', null, ns && ns !== NO_CHANGE ? statusBadge(ns) : h('span', { class: 'muted small' }, ns ? 'unchanged' : '')),
             h('td', { class: 'small' }, r.conditions),
             h('td', { class: 'small' }, r.result === 'ok' ? '✓' : r.result ? h('span', { class: 'text-error' }, r.result) : ''));
-        })))));
+        }))))));
   }
 
   mount(root, h('div', { class: 'card' },
-    h('p', null, 'Upload the results file exported from Luma (.xlsx or .csv). Rows are matched to books by ISBN — including alternate ISBNs — and by title when the ISBN doesn’t match. Nothing is changed until you click Update.'),
-    field('Luma results file', fileIn), field('…or paste', pasteIn),
+    dropZone(fileIn, 'Drop Luma’s results file here', '.xlsx or .csv'), field('…or paste', pasteIn),
     h('div', { class: 'actions' }, readBtn), prog, out));
 }

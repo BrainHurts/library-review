@@ -1,7 +1,7 @@
 // Librarian screens: Add a book · Add many · My submissions · Search all books
 import { OBJ, F, AGE_LEVELS, CAMPUSES, BOARD_MEETINGS, DEFAULT_BOARD_MEETING, STATUSES, MAX_AUTO_ALTERNATES } from '../config.js';
-import { h, mount, append, clear, toast, errorBox, alertBox, modal, statusBadge, busy, download, readTable, field, select, checkGroup, progress, tabs } from '../ui.js';
-import { list, update, pool, text, arr } from '../api.js';
+import { h, mount, append, clear, toast, errorBox, alertBox, modal, statusBadge, statusKey, busy, download, readTable, field, select, checkGroup, progress, tabs, cover, skeleton, emptyState, pageHead, responsive, statusBar } from '../ui.js';
+import { list, update, pool, text, arr, countBy } from '../api.js';
 import { normalize, extract, display } from '../isbn.js';
 import { lookupIsbn } from '../lookup.js';
 import { findIsbnMatches, findSimilarTitles, booksById, titleKey } from '../dupes.js';
@@ -9,21 +9,35 @@ import { createBook, parseAges, parseCampuses } from '../books.js';
 import { stringify } from '../csv.js';
 
 const TABS = [['add', 'Add a book'], ['bulk', 'Add many'], ['mine', 'My submissions'], ['search', 'Search all books']];
+const HEADS = {
+  add: ['Add a book', 'Scan or type an ISBN. Details and other editions fill in automatically, and duplicates are checked as you go.'],
+  bulk: ['Add many books', 'Upload your order spreadsheet or paste rows. Every row is checked before anything is submitted.'],
+  mine: ['My submissions', 'Track the books you’ve requested. You can edit or withdraw a book until it’s sent for review.'],
+  search: ['Search all books', 'Check whether a title is already requested at any campus before you submit it.'],
+};
 
 export function renderLibrarian(root, ctx, sub = 'add') {
   if (!TABS.some(([k]) => k === sub)) sub = 'add';
   const body = h('div', { class: 'tab-body' });
-  mount(root, tabs(TABS, sub, (k) => { location.hash = `#/librarian/${k}`; }), body);
+  mount(root, tabs(TABS, sub, (k) => { location.hash = `#/librarian/${k}`; }), pageHead(...HEADS[sub]), body);
   ({ add: addBook, bulk: bulkAdd, mine: mySubmissions, search: searchAll })[sub](body, ctx);
 }
 
 // ─── shared bits ────────────────────────────────────────────────────
-function bookLine(b) {
+function bookLine(b, withCover = true) {
   return h('div', { class: 'dup-book' },
-    h('strong', null, text(b, F.title)), ' ',
-    statusBadge(text(b, F.status)),
-    h('div', { class: 'muted small' },
-      [text(b, F.authors), `ISBN ${display(text(b, F.isbn))}`, text(b, F.meeting), text(b, F.campus), text(b, F.submittedBy) && `by ${text(b, F.submittedBy)}`].filter(Boolean).join(' · ')));
+    withCover ? cover(text(b, F.isbn), text(b, F.title)) : null,
+    h('div', { class: 'dup-main' },
+      h('div', { class: 'dup-title' }, h('strong', null, text(b, F.title)), ' ', statusBadge(text(b, F.status))),
+      h('div', { class: 'muted small' },
+        [text(b, F.authors), `ISBN ${display(text(b, F.isbn))}`, text(b, F.meeting), text(b, F.campus), text(b, F.submittedBy) && `by ${text(b, F.submittedBy)}`].filter(Boolean).join(' · '))));
+}
+
+/** Title + author cell with a small cover. */
+function titleCell(b, withCover = true) {
+  return h('td', { class: 'title-cell' }, h('div', { class: 'title-wrap' },
+    withCover ? cover(text(b, F.isbn), text(b, F.title)) : null,
+    h('div', null, h('div', { class: 'book-title' }, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors)))));
 }
 
 // ─── Add a book ─────────────────────────────────────────────────────
@@ -48,35 +62,51 @@ function addBook(root, ctx) {
   const ackWrap = h('label', { class: 'chk ack', hidden: true }, ackSimilar, ' I checked — this is a different book and should still be reviewed.');
   const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary' }, 'Submit for review');
   const formErr = h('div');
+  const preview = h('div', { class: 'book-preview', hidden: true });
+
+  function renderPreview() {
+    const t = titleIn.value.trim();
+    preview.hidden = !state.primary && !t;
+    if (preview.hidden) return;
+    mount(preview, cover(state.primary, t, 'L'),
+      h('div', { class: 'bp-body' },
+        h('div', { class: 'bp-title' }, t || h('span', { class: 'muted' }, 'Title not filled in yet')),
+        h('div', { class: 'muted' }, authorsIn.value.trim() || '—'),
+        h('div', { class: 'bp-meta' },
+          state.primary ? h('span', { class: 'mono' }, display(state.primary)) : null,
+          pubIn.value.trim() ? h('span', null, pubIn.value.trim()) : null,
+          state.alternates.size ? h('span', null, `${[...state.alternates.values()].filter((a) => a.checked).length} other edition ISBN(s)`) : null)));
+  }
 
   function renderAlts() {
     clear(altList);
     if (!state.alternates.size) { altList.append(h('span', { class: 'muted small' }, 'None yet. Look up the ISBN to find other editions automatically, or add them below.')); return; }
     for (const [isbn, a] of state.alternates) {
-      const cb = h('input', { type: 'checkbox', checked: a.checked, onchange: () => { a.checked = cb.checked; } });
-      altList.append(h('label', { class: `alt-chip${a.dup ? ' alt-dup' : ''}`, title: a.source }, cb, ' ', display(isbn)));
+      const cb = h('input', { type: 'checkbox', checked: a.checked, onchange: () => { a.checked = cb.checked; renderPreview(); } });
+      altList.append(h('label', { class: `alt-chip${a.dup ? ' alt-dup' : ''}`, title: a.dup ? 'Already on another book — won’t be saved' : a.source }, cb, ' ', display(isbn)));
     }
+    renderPreview();
   }
 
   function renderDup() {
     clear(dupPanel);
     ackWrap.hidden = !(state.soft.length || state.similar.length) || state.blocking.length > 0;
-    if (state.checking) { dupPanel.append(h('div', { class: 'muted' }, 'Checking for duplicates…')); return; }
+    if (state.checking) { dupPanel.append(h('div', { class: 'checking' }, h('span', { class: 'spinner spinner-sm', 'aria-hidden': 'true' }), 'Checking for duplicates…')); return; }
     if (!state.primary) return;
     if (state.blocking.length) {
       dupPanel.append(alertBox('error', h('strong', null, 'Already submitted — this book can’t be added again.'),
-        h('div', { class: 'small' }, 'Matching ISBN found on:'), state.blocking.map(bookLine),
+        h('div', { class: 'small' }, 'Matching ISBN found on:'), state.blocking.map((b) => bookLine(b)),
         h('div', { class: 'small muted' }, 'If your campus also needs it, ask an admin to add your campus to the existing entry.')));
       return;
     }
     if (state.soft.length) {
       dupPanel.append(alertBox('warn', h('strong', null, 'Possible duplicate: another edition of this work is already in the system.'),
-        h('div', { class: 'small' }, 'Online catalogs group these together — it may be a different format or translation.'), state.soft.map(bookLine)));
+        h('div', { class: 'small' }, 'Online catalogs group these together — it may be a different format or translation.'), state.soft.map((b) => bookLine(b))));
     }
     if (state.similar.length) {
-      dupPanel.append(alertBox('warn', h('strong', null, 'A book with the same title is already in the system (different ISBN).'), state.similar.map(bookLine)));
+      dupPanel.append(alertBox('warn', h('strong', null, 'A book with the same title is already in the system (different ISBN).'), state.similar.map((b) => bookLine(b))));
     }
-    if (!state.soft.length && !state.similar.length) dupPanel.append(alertBox('ok', '✓ No duplicates found.'));
+    if (!state.soft.length && !state.similar.length) dupPanel.append(alertBox('ok', h('strong', null, '✓ No duplicates found.'), ' This book hasn’t been requested at any campus.'));
   }
 
   async function checkDuplicates() {
@@ -156,6 +186,7 @@ function addBook(root, ctx) {
   isbnIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); onIsbn(); } });
   lookupBtn.addEventListener('click', () => { clearTimeout(timer); onIsbn(true); });
   titleIn.addEventListener('change', () => checkDuplicates());
+  for (const el of [titleIn, authorsIn, pubIn]) el.addEventListener('input', renderPreview);
   altIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addAlternates(); } });
   altAdd.addEventListener('click', addAlternates);
 
@@ -168,7 +199,7 @@ function addBook(root, ctx) {
     for (const el of [isbnIn, titleIn, authorsIn, pubIn, altIn, notesIn]) el.value = '';
     ackSimilar.checked = false;
     isbnMsg.textContent = '';
-    renderAlts(); renderDup(); clear(formErr);
+    renderAlts(); renderDup(); clear(formErr); renderPreview();
     isbnIn.focus();
   }
 
@@ -199,19 +230,27 @@ function addBook(root, ctx) {
       }
     });
   } },
-    h('div', { class: 'row' }, field('ISBN *', h('div', { class: 'inline' }, isbnIn, lookupBtn)), isbnMsg),
-    dupPanel,
-    h('div', { class: 'grid-2' }, field('Title *', titleIn), field('Author(s)', authorsIn)),
-    h('div', { class: 'grid-2' }, field('Date published', pubIn), field('Board meeting *', meetingSel)),
-    h('fieldset', null, h('legend', null, 'Other ISBNs for this book'),
-      h('p', { class: 'hint' }, 'Checked ISBNs are saved so nobody can submit another edition of this book. Uncheck any that are a genuinely different book.'),
-      altList, h('div', { class: 'inline' }, altIn, altAdd)),
-    h('fieldset', null, h('legend', null, 'Age level *'), ageGrp),
-    h('fieldset', null, h('legend', null, 'Campus *'), campusGrp),
-    field('Notes', notesIn),
+    h('section', { class: 'form-section' },
+      h('h2', { class: 'section-title' }, h('span', { class: 'step-n' }, '1'), 'Find the book'),
+      h('div', { class: 'row' }, field('ISBN *', h('div', { class: 'inline' }, isbnIn, lookupBtn)), isbnMsg),
+      preview,
+      dupPanel),
+    h('section', { class: 'form-section' },
+      h('h2', { class: 'section-title' }, h('span', { class: 'step-n' }, '2'), 'Book details'),
+      h('div', { class: 'grid-2' }, field('Title *', titleIn), field('Author(s)', authorsIn)),
+      h('div', { class: 'grid-2' }, field('Date published', pubIn), field('Board meeting *', meetingSel)),
+      h('fieldset', null, h('legend', null, 'Other ISBNs for this book'),
+        h('p', { class: 'hint' }, 'Checked ISBNs are saved so nobody can submit another edition of this book. Uncheck any that are a genuinely different book.'),
+        altList, h('div', { class: 'inline' }, altIn, altAdd))),
+    h('section', { class: 'form-section' },
+      h('h2', { class: 'section-title' }, h('span', { class: 'step-n' }, '3'), 'Who it’s for'),
+      h('div', { class: 'grid-2' },
+        h('fieldset', null, h('legend', null, 'Age level *'), ageGrp),
+        h('fieldset', null, h('legend', null, 'Campus *'), campusGrp)),
+      field('Notes', notesIn)),
     ackWrap,
     formErr,
-    h('div', { class: 'actions' }, submitBtn, h('button', { type: 'button', class: 'btn btn-ghost', onclick: reset }, 'Clear form')));
+    h('div', { class: 'actions form-actions' }, submitBtn, h('button', { type: 'button', class: 'btn btn-ghost', onclick: reset }, 'Clear form')));
 
   mount(root, form);
   renderAlts();
@@ -270,7 +309,7 @@ export function rowsToItems(rows, defaults) {
 
 function bulkAdd(root, ctx) {
   let items = [];
-  const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.xlsx' });
+  const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.xlsx', class: 'file-input' });
   const pasteIn = h('textarea', { rows: 5, placeholder: 'Or copy rows from Excel/Google Sheets (including the header row) and paste here' });
   const ageGrp = checkGroup('bage', AGE_LEVELS, ctx.lastAge || []);
   const campusGrp = checkGroup('bcampus', CAMPUSES, ctx.campus ? [ctx.campus] : []);
@@ -296,18 +335,24 @@ function bulkAdd(root, ctx) {
   function renderTable() {
     const ready = items.filter((i) => !i.problems.length && !i.result);
     const sel = items.filter((i) => i.selected);
-    summary.textContent = `${items.length} rows · ${ready.length} ready · ${items.filter((i) => i.problems.length).length} with problems · ${items.filter((i) => i.warnings.length && !i.problems.length).length} to double-check · ${items.filter((i) => i.result === 'ok').length} submitted`;
+    const pill = (n, label, cls) => h('span', { class: `pill ${cls}` }, h('strong', null, n), ` ${label}`);
+    mount(summary,
+      pill(items.length, 'rows', ''),
+      pill(ready.length, 'ready', 'pill-ok'),
+      pill(items.filter((i) => i.problems.length).length, 'with problems', 'pill-err'),
+      pill(items.filter((i) => i.warnings.length && !i.problems.length).length, 'to double-check', 'pill-warn'),
+      pill(items.filter((i) => i.result === 'ok').length, 'submitted', 'pill-primary'));
     submitBtn.disabled = !sel.length;
     submitBtn.textContent = sel.length ? `Submit ${sel.length} selected` : 'Submit selected';
     const allCb = h('input', { type: 'checkbox', 'aria-label': 'Select all ready rows', onchange: () => { items.forEach((i) => { if (!i.problems.length && !i.result && !i.warnings.length) i.selected = allCb.checked; }); renderTable(); } });
-    mount(tableWrap, h('table', { class: 'table' },
+    mount(tableWrap, responsive(h('table', { class: 'table' },
       h('thead', null, h('tr', null, h('th', null, allCb), ['Row', 'ISBN', 'Title / Author', 'Age', 'Campus', 'Alt ISBNs', 'Check result'].map((t) => h('th', null, t)))),
       h('tbody', null, items.map((it) => {
         const cb = h('input', { type: 'checkbox', checked: it.selected, disabled: !!it.problems.length || !!it.result, onchange: () => { it.selected = cb.checked; renderTable(); } });
         const cls = it.result === 'ok' ? 'row-ok' : it.problems.length ? 'row-bad' : it.warnings.length ? 'row-warn' : '';
         return h('tr', { class: cls },
-          h('td', null, cb), h('td', null, it.n), h('td', { class: 'mono' }, it.isbn ? display(it.isbn) : it.isbnInput),
-          h('td', null, h('div', null, it.title || h('em', { class: 'muted' }, 'no title')), h('div', { class: 'muted small' }, it.authors)),
+          h('td', { class: 'cell-check' }, cb), h('td', null, it.n), h('td', { class: 'mono' }, it.isbn ? display(it.isbn) : it.isbnInput),
+          h('td', { class: 'title-cell' }, h('div', { class: 'book-title' }, it.title || h('em', { class: 'muted' }, 'no title')), h('div', { class: 'muted small' }, it.authors)),
           h('td', null, it.age.join(', ')), h('td', null, it.campus.join(', ')), h('td', null, (it.saveAlts || it.alternates).length || ''),
           h('td', { class: 'small' },
             it.result === 'ok' ? '✓ Submitted' : null,
@@ -316,13 +361,14 @@ function bulkAdd(root, ctx) {
             it.warnings.map((p) => h('div', { class: 'text-warn' }, p)),
             !it.result && !it.problems.length && !it.warnings.length ? (it.checked ? 'Ready' : '') : null,
             it.altBad.length ? h('div', { class: 'muted' }, `Ignored bad alt ISBN(s): ${it.altBad.join(', ')}`) : null));
-      }))));
+      })))));
   }
 
   checkBtn.addEventListener('click', () => busy(checkBtn, 'Checking…', async () => {
     clear(msg);
     try {
       items = await loadRows();
+      summary.parentElement.hidden = false;
       renderTable();
       // Online fill-in
       if (onlineChk.checked) {
@@ -405,7 +451,7 @@ function bulkAdd(root, ctx) {
   mount(root,
     h('div', { class: 'card' },
       h('p', null, 'Upload a spreadsheet (.xlsx or .csv) or paste rows. Columns are matched by header name — ISBN, Title, Author(s), Date Published, Age Level, Campus, and any number of “Alternative ISBN” columns. Your old order sheet works as-is.'),
-      h('div', { class: 'grid-2' }, field('Spreadsheet file', fileIn), h('div', { class: 'align-end' }, templateBtn)),
+      h('div', { class: 'grid-2' }, dropZone(fileIn, 'Drop your spreadsheet here', '.xlsx or .csv'), h('div', { class: 'align-end' }, templateBtn)),
       field('…or paste', pasteIn),
       h('div', { class: 'grid-3' },
         h('fieldset', null, h('legend', null, 'Age level (for rows that leave it blank)'), ageGrp),
@@ -414,18 +460,43 @@ function bulkAdd(root, ctx) {
       h('label', { class: 'chk' }, onlineChk, ' Fill in missing titles/authors and find other-edition ISBNs online'),
       h('label', { class: 'chk' }, titleChk, ' Also check for matching titles (slower)'),
       h('div', { class: 'actions' }, checkBtn, submitBtn, resultsBtn), prog, msg),
-    h('div', { class: 'card' }, summary, tableWrap));
+    h('div', { class: 'card', hidden: true }, summary, tableWrap));
 }
 
 // ─── My submissions ────────────────────────────────────────────────
 function mySubmissions(root, ctx) {
   const meetingSel = select([['', 'All meetings'], ...BOARD_MEETINGS], ctx.lastMeeting || '');
   const statusSel = select([['', 'All statuses'], ...STATUSES], '');
+  const cards = h('div', { class: 'stat-cards' });
   const out = h('div');
   let page = 1;
+  let lastCounts = null;
+
+  // One aggregate call per meeting change (not per page or status click).
+  async function loadCounts() {
+    if (!ctx.librarianId) return;
+    mount(cards, STATUSES.slice(0, 5).map(() => h('div', { class: 'stat stat-loading' }, h('span', { class: 'sk sk-line' }))));
+    const rules = [{ field: F.submittedBy, operator: 'is', value: ctx.librarianId }];
+    if (meetingSel.value) rules.push({ field: F.meeting, operator: 'is', value: meetingSel.value });
+    try {
+      const counts = await countBy(OBJ.books, F.status, { match: 'and', rules });
+      renderCards(counts);
+    } catch { clear(cards); } // counts are a nice-to-have; the list below still works
+  }
+
+  function renderCards(counts) {
+    lastCounts = counts;
+    const total = STATUSES.reduce((a, s) => a + (counts.get(s) || 0), 0);
+    const pick = (s) => { statusSel.value = s; page = 1; renderCards(counts); load(); };
+    mount(cards,
+      h('button', { class: `stat${!statusSel.value ? ' active' : ''}`, onclick: () => pick('') }, h('span', { class: 'stat-n' }, total), h('span', { class: 'stat-l' }, 'All my books')),
+      STATUSES.filter((s) => s !== 'Withdrawn' || counts.get(s)).map((s) => h('button', { class: `stat s-${statusKey(s)}${statusSel.value === s ? ' active' : ''}`, onclick: () => pick(s) },
+        h('span', { class: 'stat-n' }, counts.get(s) || 0), h('span', { class: 'stat-l' }, s))),
+      h('div', { class: 'stat-bar-wrap' }, statusBar(STATUSES, counts)));
+  }
 
   async function load() {
-    mount(out, h('div', { class: 'muted' }, 'Loading…'));
+    mount(out, skeleton(4));
     if (!ctx.librarianId) { mount(out, alertBox('warn', 'Your account is not linked to a librarian record, so submissions can’t be listed.')); return; }
     const rules = [{ field: F.submittedBy, operator: 'is', value: ctx.librarianId }];
     if (meetingSel.value) rules.push({ field: F.meeting, operator: 'is', value: meetingSel.value });
@@ -437,18 +508,23 @@ function mySubmissions(root, ctx) {
   }
 
   function renderList(r) {
-    if (!r.records.length) { mount(out, h('p', { class: 'muted' }, 'Nothing here yet.')); return; }
+    if (!r.records.length) {
+      mount(out, emptyState('📭', statusSel.value || meetingSel.value ? 'No books match these filters' : 'You haven’t submitted any books yet',
+        statusSel.value || meetingSel.value ? 'Try a different board meeting or status.' : 'Books you submit will appear here with their review status.',
+        statusSel.value || meetingSel.value ? null : h('a', { class: 'btn btn-primary', href: '#/librarian/add' }, 'Add a book')));
+      return;
+    }
     mount(out,
       h('div', { class: 'muted small' }, `${r.total_records} book(s)`),
-      h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('div', { class: 'table-wrap' }, responsive(h('table', { class: 'table' },
         h('thead', null, h('tr', null, ['Title / Author', 'ISBN', 'Age', 'Campus', 'Meeting', 'Status', 'Review notes', ''].map((t) => h('th', null, t)))),
         h('tbody', null, r.records.map((b) => h('tr', null,
-          h('td', null, h('div', null, text(b, F.title)), h('div', { class: 'muted small' }, text(b, F.authors))),
+          titleCell(b),
           h('td', { class: 'mono' }, display(text(b, F.isbn))),
           h('td', null, arr(b, F.age).join(', ')), h('td', null, arr(b, F.campus).join(', ')), h('td', null, text(b, F.meeting)),
           h('td', null, statusBadge(text(b, F.status))),
           h('td', { class: 'small' }, text(b, F.lumaConditions) || text(b, F.adminNotes)),
-          h('td', null, text(b, F.status) === 'Submitted' ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => editMine(b) }, 'Edit') : null)))))),
+          h('td', { class: 'row-actions' }, text(b, F.status) === 'Submitted' ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => editMine(b) }, 'Edit') : null))))))),
       pager(r, (p) => { page = p; load(); }));
   }
 
@@ -477,14 +553,15 @@ function mySubmissions(root, ctx) {
     }));
     withdraw.addEventListener('click', () => busy(withdraw, 'Withdrawing…', async () => {
       clear(err);
-      try { await update(OBJ.books, b.id, { [F.status]: 'Withdrawn' }); m.close(); toast('Request withdrawn.', 'success'); load(); }
+      try { await update(OBJ.books, b.id, { [F.status]: 'Withdrawn' }); m.close(); toast('Request withdrawn.', 'success'); loadCounts(); load(); }
       catch (e) { err.append(errorBox(e, 'Could not withdraw')); }
     }));
   }
 
-  meetingSel.addEventListener('change', () => { page = 1; load(); });
-  statusSel.addEventListener('change', () => { page = 1; load(); });
-  mount(root, h('div', { class: 'card' }, h('div', { class: 'filters' }, field('Board meeting', meetingSel), field('Status', statusSel)), out));
+  meetingSel.addEventListener('change', () => { page = 1; loadCounts(); load(); });
+  statusSel.addEventListener('change', () => { page = 1; if (lastCounts) renderCards(lastCounts); load(); });
+  mount(root, cards, h('div', { class: 'card' }, h('div', { class: 'filters' }, field('Board meeting', meetingSel), field('Status', statusSel)), out));
+  loadCounts();
   load();
 }
 
@@ -498,13 +575,13 @@ export function pager(r, go) {
 
 // ─── Search all ─────────────────────────────────────────────────────
 function searchAll(root) {
-  const q = h('input', { type: 'search', placeholder: 'Title, author, or any ISBN' });
+  const q = h('input', { type: 'search', placeholder: 'Title, author, or any ISBN', class: 'search-input', 'aria-label': 'Search books' });
   const btn = h('button', { class: 'btn btn-primary' }, 'Search');
-  const out = h('div');
+  const out = h('div', null, emptyState('🔎', 'Search before you submit', 'ISBN searches also match the alternate ISBNs of every submitted book.'));
   async function run() {
     const term = q.value.trim();
     if (!term) return;
-    mount(out, h('div', { class: 'muted' }, 'Searching…'));
+    mount(out, skeleton(3));
     try {
       const n = normalize(term);
       let records;
@@ -515,12 +592,49 @@ function searchAll(root) {
         const r = await list(OBJ.books, { filters: { match: 'or', rules: [{ field: F.title, operator: 'contains', value: term }, { field: F.authors, operator: 'contains', value: term }] }, rowsPerPage: 100, sortField: F.title });
         records = r.records;
       }
-      if (!records.length) { mount(out, alertBox('ok', n.valid ? `No book with ISBN ${display(n.isbn13)} (or as an alternate) — OK to submit.` : 'No matches.')); return; }
-      mount(out, h('div', { class: 'dup-list' }, records.map(bookLine)));
+      if (!records.length) {
+        mount(out, n.valid
+          ? h('div', { class: 'result-clear' }, cover(n.isbn13, term, 'L'), h('div', null, h('h3', null, '✓ Not in the system yet'), h('p', null, `No book uses ISBN ${display(n.isbn13)}, as its main ISBN or as another edition. It’s OK to submit.`), h('a', { class: 'btn btn-primary', href: '#/librarian/add' }, 'Add this book')))
+          : emptyState('📚', 'No matches', `Nothing matched “${term}”. Try a shorter word, or search by ISBN.`));
+        return;
+      }
+      mount(out, h('div', { class: 'muted small' }, `${records.length} result(s)${records.length === 100 ? ' (showing the first 100; try a more specific search)' : ''}`),
+        h('div', { class: 'result-grid' }, records.map((b) => h('article', { class: 'result-card' },
+          cover(text(b, F.isbn), text(b, F.title), 'L'),
+          h('div', { class: 'rc-body' },
+            h('div', { class: 'rc-title' }, text(b, F.title)),
+            h('div', { class: 'muted small' }, text(b, F.authors)),
+            statusBadge(text(b, F.status)),
+            h('dl', { class: 'rc-meta' },
+              h('dt', null, 'ISBN'), h('dd', { class: 'mono' }, display(text(b, F.isbn))),
+              h('dt', null, 'Meeting'), h('dd', null, text(b, F.meeting) || '—'),
+              h('dt', null, 'Campus'), h('dd', null, arr(b, F.campus).join(', ') || '—'),
+              text(b, F.submittedBy) ? [h('dt', null, 'By'), h('dd', null, text(b, F.submittedBy))] : null))))));
     } catch (err) { mount(out, errorBox(err, 'Search failed')); }
   }
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
   btn.addEventListener('click', run);
-  mount(root, h('div', { class: 'card' }, h('div', { class: 'inline' }, q, btn), h('p', { class: 'hint' }, 'ISBN searches also match alternate ISBNs of every submitted book.'), out));
+  mount(root, h('div', { class: 'card search-card' }, h('div', { class: 'inline' }, q, btn)), out);
   q.focus();
+}
+
+/** Styled drag-and-drop wrapper around a file input. */
+export function dropZone(input, title, sub) {
+  const name = h('span', { class: 'dz-file' });
+  const zone = h('label', { class: 'dropzone' },
+    input,
+    h('span', { class: 'dz-icon', 'aria-hidden': 'true' }, '⬆'),
+    h('span', { class: 'dz-title' }, title),
+    h('span', { class: 'muted small' }, `or click to choose · ${sub}`),
+    name);
+  const show = () => { name.textContent = input.files[0] ? `Selected: ${input.files[0].name}` : ''; zone.classList.toggle('has-file', !!input.files[0]); };
+  input.addEventListener('change', show);
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag');
+    if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; show(); input.dispatchEvent(new Event('change')); }
+  });
+  return zone;
 }

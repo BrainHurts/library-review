@@ -79,6 +79,27 @@ export async function count(objectKey, filters) {
   return r.total_records || 0;
 }
 
+/**
+ * Count records per value of a field in ONE call (Knack aggregate endpoint).
+ * @returns {Promise<Map<string, number>>}
+ */
+export async function countBy(objectKey, field, filters) {
+  const body = { groupBy: [{ field }], aggregations: [{ calculation: 'count' }] };
+  if (filters && filters.rules && filters.rules.length) body.filters = filters;
+  const r = await request('POST', `/objects/${objectKey}/records/aggregate`, body);
+  const rows = Array.isArray(r) ? r : r.records || r.rows || r.data || [];
+  const out = new Map();
+  for (const row of rows) {
+    const g = row.group_0_raw ?? row.group_0;
+    const n = Number(row.agg_0_raw ?? row.agg_0) || 0;
+    for (const k of (Array.isArray(g) ? g : [g])) {
+      const key = k && typeof k === 'object' ? k.identifier ?? '' : String(k ?? '');
+      out.set(key, (out.get(key) || 0) + n);
+    }
+  }
+  return out;
+}
+
 export const getRecord = (o, id) => request('GET', `/objects/${o}/records/${id}`);
 export const create = (o, data) => request('POST', `/objects/${o}/records`, data);
 export const update = (o, id, data) => request('PUT', `/objects/${o}/records/${id}`, data);

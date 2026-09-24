@@ -14,7 +14,7 @@ A web app where library staff submit books for board review, backed by the Knack
   - Open Library groups the book with one that's already submitted.
 - **Add many**: upload the old order spreadsheet (.xlsx/.csv) or paste rows from Excel. The app checks every row for bad ISBNs, duplicates within the file and duplicates already in the system, then submits the rows that pass.
 - **My submissions**: see your submissions with their status and any review conditions. You can edit or withdraw a book until it's sent for review.
-- **Search all books**: search by title, author or any ISBN before submitting.
+- **Search all books**: search by title, author or any ISBN before submitting. Results show book covers from Open Library.
 
 **Admins**
 - **Review books**: filter by board meeting, status, campus or text. The page shows status counts. Change a status inline or for several books at once. Open a book to edit it, manage its ISBNs or delete it.
@@ -23,6 +23,12 @@ A web app where library staff submit books for board review, backed by the Knack
   - matches rows on any known ISBN, falling back to title;
   - lets you map Luma's review statuses onto this app's statuses;
   - saves the conditions, booklist and other result fields.
+
+**Everyone**
+- Works on phones: tables turn into stacked cards on narrow screens.
+- Light/dark theme toggle in the top bar. It follows the device setting until someone picks a theme, and the choice is remembered in that browser.
+
+**API usage:** the status counts on *Review books* and *My submissions* come from one Knack aggregate request, which is only repeated when the board meeting changes or after a bulk update. Changing a single book's status updates the counts on the page without calling the API again.
 
 ## Deploying on GitHub Pages
 1. Create a **public** repo (e.g. `library-review`).

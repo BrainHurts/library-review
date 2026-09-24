@@ -8,7 +8,9 @@ export function h(tag, attrs, ...children) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v === undefined || v === null || v === false) continue;
       if (k === 'class') el.className = v;
-      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'style' && typeof v === 'object') {
+        for (const [p, pv] of Object.entries(v)) { if (p.startsWith('--')) el.style.setProperty(p, pv); else el.style[p] = pv; }
+      }
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
       else if (k === 'value') el.value = v;
       else if (k === 'checked') el.checked = !!v;
@@ -62,9 +64,23 @@ export function alertBox(kind, ...children) {
 }
 
 export function modal(title, body, actions = []) {
+  const opener = document.activeElement;
   const backdrop = h('div', { class: 'modal-backdrop' });
-  const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => {
+    backdrop.remove();
+    document.removeEventListener('keydown', onKey);
+    if (!document.querySelector('.modal-backdrop')) document.body.classList.remove('no-scroll');
+    if (opener && opener.isConnected) opener.focus();
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key === 'Tab') { // keep focus inside the dialog
+      const f = [...dlg.querySelectorAll('button, input, select, textarea, a[href]')].filter((x) => !x.disabled && x.offsetParent);
+      if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    }
+  };
   document.addEventListener('keydown', onKey);
   const dlg = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
     h('div', { class: 'modal-head' }, h('h2', null, title), h('button', { class: 'icon-btn', 'aria-label': 'Close', onclick: close }, '×')),
@@ -73,6 +89,7 @@ export function modal(title, body, actions = []) {
   backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) close(); });
   backdrop.append(dlg);
   document.body.append(backdrop);
+  document.body.classList.add('no-scroll');
   const first = dlg.querySelector('input, select, textarea, button.btn');
   if (first) first.focus();
   return { close, el: dlg };
@@ -84,6 +101,85 @@ export function statusBadge(status) {
     'Approved with Conditions': 'b-cond', 'Not Approved': 'b-denied', Withdrawn: 'b-withdrawn',
   }[status] || 'b-neutral';
   return h('span', { class: `badge ${cls}` }, status || '—');
+}
+
+/** CSS class suffix for a status (used by badges, stat cards and the status bar). */
+export function statusKey(status) {
+  return {
+    Submitted: 'submitted', 'Sent to Luma': 'sent', Approved: 'approved',
+    'Approved with Conditions': 'cond', 'Not Approved': 'denied', Withdrawn: 'withdrawn',
+  }[status] || 'neutral';
+}
+
+/**
+ * Book cover from Open Library, falling back to a colored tile with the title's first letter.
+ * Open Library rate-limits ISBN cover lookups, so use this only for short lists.
+ */
+export function cover(isbn, title, size = 'S') {
+  const letter = (String(title || '?').replace(/^(the|a|an)\s+/i, '').match(/[\p{L}\p{N}]/u) || ['?'])[0].toUpperCase();
+  let hash = 0;
+  for (const ch of String(title || '')) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+  const tile = h('div', { class: `cover cover-${size} cover-blank`, style: { '--hue': hash }, 'aria-hidden': 'true' }, letter);
+  if (!isbn) return tile;
+  const img = h('img', { class: `cover cover-${size}`, alt: '', loading: 'lazy', src: `https://covers.openlibrary.org/b/isbn/${isbn}-${size === 'L' ? 'M' : 'S'}.jpg?default=false` });
+  img.addEventListener('error', () => img.replaceWith(tile));
+  // Open Library sometimes returns a 1×1 placeholder instead of a 404.
+  img.addEventListener('load', () => { if (img.naturalWidth < 5) img.replaceWith(tile); });
+  return img;
+}
+
+/** Placeholder rows shown while data loads. */
+export function skeleton(rows = 5) {
+  return h('div', { class: 'skeleton', 'aria-busy': 'true', 'aria-label': 'Loading' },
+    Array.from({ length: rows }, () => h('div', { class: 'sk-row' }, h('div', { class: 'sk sk-cover' }), h('div', { class: 'sk-lines' }, h('div', { class: 'sk sk-line' }), h('div', { class: 'sk sk-line sk-short' })))));
+}
+
+export function emptyState(icon, title, message, action) {
+  return h('div', { class: 'empty' }, h('div', { class: 'empty-icon', 'aria-hidden': 'true' }, icon), h('h3', null, title), message ? h('p', { class: 'muted' }, message) : null, action || null);
+}
+
+/** Heading block at the top of a tab. */
+export function pageHead(title, subtitle, ...actions) {
+  return h('div', { class: 'page-head' }, h('div', null, h('h1', null, title), subtitle ? h('p', { class: 'muted' }, subtitle) : null),
+    actions.length ? h('div', { class: 'page-actions' }, actions) : null);
+}
+
+/** Copy each column header into its cells so tables can stack into cards on phones. */
+export function responsive(table) {
+  const labels = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+  table.classList.add('table-stack');
+  table.querySelectorAll('tbody tr').forEach((tr) => [...tr.children].forEach((td, i) => { if (labels[i]) td.dataset.label = labels[i]; }));
+  return table;
+}
+
+/** Stacked bar showing how many books are in each status. */
+export function statusBar(statuses, counts) {
+  const total = statuses.reduce((a, s) => a + (counts.get(s) || 0), 0);
+  if (!total) return null;
+  return h('div', { class: 'status-bar', role: 'img', 'aria-label': statuses.map((s) => `${s}: ${counts.get(s) || 0}`).join(', ') },
+    statuses.filter((s) => counts.get(s)).map((s) => h('span', { class: `seg s-${statusKey(s)}`, style: { flexGrow: counts.get(s) }, title: `${s}: ${counts.get(s)}` })));
+}
+
+/** Light/dark theme override, remembered per browser. */
+const THEME_KEY = 'lbr.theme';
+export function applySavedTheme() {
+  let t = null;
+  try { t = localStorage.getItem(THEME_KEY); } catch { /* storage blocked */ }
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+}
+export function themeToggle() {
+  const dark = () => document.documentElement.dataset.theme === 'dark'
+    || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+  const btn = h('button', { class: 'icon-btn theme-btn', type: 'button' });
+  const paint = () => { btn.textContent = dark() ? '☀' : '☾'; btn.setAttribute('aria-label', dark() ? 'Switch to light theme' : 'Switch to dark theme'); btn.title = btn.getAttribute('aria-label'); };
+  btn.addEventListener('click', () => {
+    const next = dark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* storage blocked */ }
+    paint();
+  });
+  paint();
+  return btn;
 }
 
 /** Disable a button and show a busy label while fn runs. */
