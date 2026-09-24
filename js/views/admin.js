@@ -8,6 +8,7 @@ import { isbnRecordsFor, deleteBook } from '../books.js';
 import { stringify, parse } from '../csv.js';
 import { LUMA_EXPORT_HEADER, lumaExportRows, parseLumaResults, guessStatus, resolveStatus, NO_CHANGE } from '../luma.js';
 import { pager, dropZone } from './librarian.js';
+import { bookMenu } from '../bookActions.js';
 
 const TABS = [['review', 'Review books'], ['export', 'Send to Luma'], ['import', 'Import Luma results']];
 const HEADS = {
@@ -125,6 +126,8 @@ function review(root, ctx) {
   });
 
   function renderTable(r) {
+    // A refresh from the row menu updates the record in place, so re-render without refetching.
+    const rerender = () => { st.selected.clear(); updateBulk(); renderTable(r); };
     if (!r.records.length) { mount(out, emptyState('📭', 'No books match these filters', 'Try another board meeting, status or campus.')); return; }
     const all = h('input', { type: 'checkbox', 'aria-label': 'Select all on this page', onchange: () => {
       out.querySelectorAll('tbody input[type=checkbox]').forEach((cb) => { cb.checked = all.checked; cb.dispatchEvent(new Event('change')); });
@@ -155,7 +158,9 @@ function review(root, ctx) {
             h('td', { class: 'small' }, text(b, F.submittedBy)),
             h('td', null, sSel),
             h('td', { class: 'small' }, text(b, F.lumaStatus), text(b, F.lumaConditions) ? h('div', { class: 'muted' }, text(b, F.lumaConditions)) : null),
-            h('td', { class: 'row-actions' }, h('button', { class: 'btn btn-small btn-ghost', onclick: () => editBook(b.id, reloadAll) }, 'Open')));
+            h('td', { class: 'row-actions' }, h('div', { class: 'row-actions-inner' },
+              h('button', { class: 'btn btn-small btn-ghost', onclick: () => editBook(b.id, reloadAll) }, 'Open'),
+              bookMenu(ctx, b, rerender))));
         }))))),
       pager(r, (p) => { st.page = p; load(); }));
   }

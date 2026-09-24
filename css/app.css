@@ -269,6 +269,9 @@ input[type=checkbox] { accent-color: var(--primary); }
 .row-warn td { background: color-mix(in srgb, var(--warn-bg) 60%, transparent); }
 .row-ok td { background: color-mix(in srgb, var(--ok-bg) 60%, transparent); }
 .row-actions { text-align: right; }
+/* Keep the Open / ⋯ buttons reachable when a wide table scrolls sideways. */
+.table td.row-actions { position: sticky; right: 0; background: var(--surface); box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .18); }
+.table tbody tr:hover td.row-actions { background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface)); }
 .status-select { padding: .3rem 1.8rem .3rem .5rem; font-size: .85rem; min-width: 11rem; }
 .pager { display: flex; gap: .75rem; align-items: center; justify-content: center; margin-top: 1rem; }
 .summary { font-weight: 600; margin-bottom: .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -276,6 +279,29 @@ input[type=checkbox] { accent-color: var(--primary); }
 .bulk-bar select { width: auto; color: var(--text); }
 .dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; margin: 0; }
 .dl dt { color: var(--muted); } .dl dd { margin: 0; }
+
+/* ─── Row menu ───────────────────────────────────────────────────── */
+.row-actions-inner { display: inline-flex; gap: .35rem; align-items: center; justify-content: flex-end; }
+.menu-btn { width: 32px; height: 30px; display: inline-grid; place-items: center; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 1.15rem; line-height: 1; cursor: pointer; }
+.menu-btn:hover, .menu-btn[aria-expanded="true"] { background: var(--bg-2); border-color: var(--border); color: var(--text); }
+.menu { position: fixed; z-index: 40; min-width: 250px; padding: .3rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); animation: pop .12s ease-out; }
+.menu-item { display: flex; gap: .65rem; align-items: flex-start; width: 100%; padding: .5rem .6rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--primary-soft); outline: none; }
+.mi-icon { width: 1.4rem; flex: none; text-align: center; color: var(--primary); font-weight: 700; font-size: .85rem; line-height: 1.5; }
+.mi-text { display: flex; flex-direction: column; }
+.mi-label { font-weight: 600; font-size: .9rem; }
+.mi-hint { color: var(--muted); font-size: .78rem; }
+.result-card { position: relative; }
+.rc-menu { position: absolute; top: .5rem; right: .5rem; }
+.result-card .rc-body { padding-right: 1.5rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Refresh comparison */
+.table.cmp th[scope=row] { text-transform: none; letter-spacing: 0; font-size: .85rem; color: var(--text); position: static; background: none; border-bottom: 1px solid var(--border); }
+.table.cmp td:first-child { width: 2rem; }
+.cmp-old { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--err) 60%, transparent); }
+.cmp-new { font-weight: 600; background: color-mix(in srgb, var(--ok-bg) 70%, transparent); }
+.modal-body h3 { font-size: .95rem; margin: .4rem 0 0; }
 
 /* ─── Stat cards & status bar ────────────────────────────────────── */
 .stat-cards { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
@@ -387,7 +413,7 @@ input[type=checkbox] { accent-color: var(--primary); }
   .table-stack td.cell-check { position: absolute; top: .65rem; right: .8rem; width: auto; padding: 0; }
   .table-stack td.cell-check::before { display: none; }
   .table-stack td.cell-check + td.title-cell { padding-right: 2rem; }
-  .table-stack td.row-actions { justify-content: flex-end; }
+  .table-stack td.row-actions { justify-content: flex-end; position: static; box-shadow: none; background: none; }
   .table-stack td.row-actions::before { display: none; }
   .table-stack .status-select { min-width: 0; width: auto; }
   .table-stack .mono { white-space: normal; }

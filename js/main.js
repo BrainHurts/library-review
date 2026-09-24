@@ -66,7 +66,7 @@ async function boot() {
   if (keys.includes(PROFILE.admin)) roles.push(['admin', 'Admin']);
   if (keys.includes(PROFILE.librarian)) roles.push(['librarian', 'Librarian']);
 
-  const ctx = { session, librarianId: session.librarianId, campus: session.campus };
+  const ctx = { session, librarianId: session.librarianId, campus: session.campus, isAdmin: keys.includes(PROFILE.admin) };
   if (keys.includes(PROFILE.librarian) && !ctx.librarianId) {
     try {
       // DAC limits librarians to their own record; admins can see all, so match on email when we have it.

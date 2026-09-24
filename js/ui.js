@@ -269,3 +269,76 @@ export function tabs(items, active, onChange) {
   return h('nav', { class: 'tabs', role: 'tablist' }, items.map(([key, label]) =>
     h('button', { role: 'tab', class: `tab${key === active ? ' active' : ''}`, 'aria-selected': key === active ? 'true' : 'false', onclick: () => onChange(key) }, label)));
 }
+
+// ─── Row "⋯" menu ───────────────────────────────────────────────────
+// The menu is attached to <body> with fixed positioning so table scroll areas can't clip it.
+let openMenu = null;
+function closeMenu(focusButton = false) {
+  if (!openMenu) return;
+  const { menu, btn, cleanup } = openMenu;
+  openMenu = null;
+  menu.remove();
+  cleanup();
+  btn.setAttribute('aria-expanded', 'false');
+  if (focusButton) btn.focus();
+}
+
+/**
+ * A "⋯" button that opens a small action menu.
+ * @param {string} label  accessible name, e.g. 'Actions for “Wonder”'
+ * @param {{label:string, hint?:string, icon?:string, onSelect:Function}[]} items  falsy items are skipped
+ */
+export function rowMenu(label, items) {
+  const btn = h('button', { type: 'button', class: 'menu-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': label, title: 'More actions' }, '⋯');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasMine = openMenu && openMenu.btn === btn;
+    closeMenu();
+    if (!wasMine) showMenu(btn, items.filter(Boolean));
+  });
+  return btn;
+}
+
+function showMenu(btn, items) {
+  const buttons = items.map((it) => h('button', { type: 'button', role: 'menuitem', class: 'menu-item', tabindex: '-1',
+    // onSelect runs inside the click so it may open a new tab without the pop-up blocker stepping in.
+    onclick: () => { closeMenu(); it.onSelect(); } },
+  h('span', { class: 'mi-icon', 'aria-hidden': 'true' }, it.icon || ''),
+  h('span', { class: 'mi-text' }, h('span', { class: 'mi-label' }, it.label), it.hint ? h('span', { class: 'mi-hint' }, it.hint) : null)));
+  const menu = h('div', { class: 'menu', role: 'menu', 'aria-label': btn.getAttribute('aria-label') }, buttons);
+  document.body.append(menu);
+
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const below = r.bottom + 4 + mh <= window.innerHeight - 8;
+    menu.style.top = `${below ? r.bottom + 4 : Math.max(8, r.top - mh - 4)}px`;
+    menu.style.left = `${Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8))}px`;
+  };
+  place();
+
+  const onDoc = (e) => { if (!menu.contains(e.target) && e.target !== btn) closeMenu(); };
+  const onKey = (e) => {
+    const i = buttons.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); buttons[(i + 1) % buttons.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); buttons[(i - 1 + buttons.length) % buttons.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); buttons[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); buttons[buttons.length - 1].focus(); }
+    else if (e.key === 'Tab') closeMenu();
+  };
+  const onMove = () => closeMenu();
+  document.addEventListener('mousedown', onDoc, true);
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('resize', onMove);
+  window.addEventListener('scroll', onMove, true);
+  openMenu = { menu, btn, cleanup: () => {
+    document.removeEventListener('mousedown', onDoc, true);
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', onMove);
+    window.removeEventListener('scroll', onMove, true);
+  } };
+  btn.setAttribute('aria-expanded', 'true');
+  if (buttons[0]) buttons[0].focus();
+}

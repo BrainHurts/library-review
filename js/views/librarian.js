@@ -7,6 +7,7 @@ import { lookupIsbn } from '../lookup.js';
 import { findIsbnMatches, findSimilarTitles, booksById, titleKey } from '../dupes.js';
 import { createBook, parseAges, parseCampuses } from '../books.js';
 import { stringify } from '../csv.js';
+import { bookMenu } from '../bookActions.js';
 
 const TABS = [['add', 'Add a book'], ['bulk', 'Add many'], ['mine', 'My submissions'], ['search', 'Search all books']];
 const HEADS = {
@@ -522,7 +523,9 @@ function mySubmissions(root, ctx) {
           h('td', null, arr(b, F.age).join(', ')), h('td', null, arr(b, F.campus).join(', ')), h('td', null, text(b, F.meeting)),
           h('td', null, statusBadge(text(b, F.status))),
           h('td', { class: 'small' }, text(b, F.lumaConditions) || text(b, F.adminNotes)),
-          h('td', { class: 'row-actions' }, text(b, F.status) === 'Submitted' ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => editMine(b) }, 'Edit') : null))))))),
+          h('td', { class: 'row-actions' }, h('div', { class: 'row-actions-inner' },
+            text(b, F.status) === 'Submitted' ? h('button', { class: 'btn btn-small btn-ghost', onclick: () => editMine(b) }, 'Edit') : null,
+            bookMenu(ctx, b, () => renderList(r)))))))))),
       pager(r, (p) => { page = p; load(); }));
   }
 
@@ -572,7 +575,7 @@ export function pager(r, go) {
 }
 
 // ─── Search all ─────────────────────────────────────────────────────
-function searchAll(root) {
+function searchAll(root, ctx) {
   const q = h('input', { type: 'search', placeholder: 'Title, author, or any ISBN', class: 'search-input', 'aria-label': 'Search books' });
   const btn = h('button', { class: 'btn btn-primary' }, 'Search');
   const out = h('div', null, emptyState('🔎', 'Search before you submit', 'ISBN searches also match the alternate ISBNs of every submitted book.'));
@@ -596,8 +599,13 @@ function searchAll(root) {
           : emptyState('📚', 'No matches', `Nothing matched “${term}”. Try a shorter word, or search by ISBN.`));
         return;
       }
-      mount(out, h('div', { class: 'muted small' }, `${records.length} result(s)${records.length === 100 ? ' (showing the first 100; try a more specific search)' : ''}`),
+      renderResults(records);
+    } catch (err) { mount(out, errorBox(err, 'Search failed')); }
+  }
+  function renderResults(records) {
+    mount(out, h('div', { class: 'muted small' }, `${records.length} result(s)${records.length === 100 ? ' (showing the first 100; try a more specific search)' : ''}`),
         h('div', { class: 'result-grid' }, records.map((b) => h('article', { class: 'result-card' },
+          h('div', { class: 'rc-menu' }, bookMenu(ctx, b, () => renderResults(records))),
           cover(text(b, F.isbn), text(b, F.title), 'L'),
           h('div', { class: 'rc-body' },
             h('div', { class: 'rc-title' }, text(b, F.title)),
@@ -608,7 +616,6 @@ function searchAll(root) {
               h('dt', null, 'Meeting'), h('dd', null, text(b, F.meeting) || '—'),
               h('dt', null, 'Campus'), h('dd', null, arr(b, F.campus).join(', ') || '—'),
               text(b, F.submittedBy) ? [h('dt', null, 'By'), h('dd', null, text(b, F.submittedBy))] : null))))));
-    } catch (err) { mount(out, errorBox(err, 'Search failed')); }
   }
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
   btn.addEventListener('click', run);

@@ -27,6 +27,9 @@ A web app where library staff submit books for board review, backed by the Knack
 **Everyone**
 - Works on phones: tables turn into stacked cards on narrow screens.
 - Book covers (from Open Library) in every list and table. A book without a cover shows a colored tile with its first letter. Open Library limits cover lookups to about 100 per 5 minutes per network, so covers only load for rows on screen. If many fail in a row, the app stops requesting covers for 5 minutes and shows tiles instead.
+- **Row menu (⋯)** on every book in *Review books*, *My submissions* and *Search all books*:
+  - **Refresh book data** looks the ISBN up again in Google Books and Open Library. It shows which details differ and which other-edition ISBNs aren't saved yet, and lets you apply the ones you tick. Admins can apply changes to any book. Librarians can apply them to their own books while they're still *Submitted*; for other books they can only look.
+  - **View raw data** opens a new tab with the Knack book record, its ISBN records, and the raw Google Books and Open Library responses. Each section can be copied, and everything can be downloaded as one `.json` file. Pop-ups must be allowed for the site.
 - Light/dark theme toggle in the top bar. It follows the device setting until someone picks a theme, and the choice is remembered in that browser.
 
 **API usage:** the status counts on *Review books* and *My submissions* come from one Knack aggregate request, which is only repeated when the board meeting changes or after a bulk update. Changing a single book's status updates the counts on the page without calling the API again.

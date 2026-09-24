@@ -28,8 +28,29 @@ async function getJson(url, ms = 8000) {
   }
 }
 
+export const googleUrl = (isbn13) => `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1`;
+export const openLibraryUrl = (isbn13) => `https://openlibrary.org/search.json?isbn=${isbn13}&fields=key,title,subtitle,author_name,first_publish_year,isbn&limit=1`;
+
+/** Fetch a URL and report exactly what came back (for the raw-data view). Never throws. */
+export async function fetchRaw(url, ms = 10000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const started = performance.now();
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    const txt = await res.text();
+    let body;
+    try { body = JSON.parse(txt); } catch { body = txt; }
+    return { ok: res.ok, status: res.status, ms: Math.round(performance.now() - started), body };
+  } catch (err) {
+    return { ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.name === 'AbortError' ? 'Timed out' : err.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function google(isbn13) {
-  const j = await getJson(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}&maxResults=1`);
+  const j = await getJson(googleUrl(isbn13));
   const v = j.items && j.items[0] && j.items[0].volumeInfo;
   if (!v) return null;
   const ids = (v.industryIdentifiers || []).map((x) => normalize(x.identifier)).filter((n) => n.valid).map((n) => n.isbn13);
@@ -42,7 +63,7 @@ async function google(isbn13) {
 }
 
 async function openLibrary(isbn13) {
-  const j = await getJson(`https://openlibrary.org/search.json?isbn=${isbn13}&fields=key,title,subtitle,author_name,first_publish_year,isbn&limit=1`);
+  const j = await getJson(openLibraryUrl(isbn13));
   const d = j.docs && j.docs[0];
   if (!d) return null;
   const isbns = [...new Set((d.isbn || []).map((x) => normalize(x)).filter((n) => n.valid).map((n) => n.isbn13))];
